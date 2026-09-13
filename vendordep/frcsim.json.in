@@ -1,0 +1,34 @@
+{
+  "fileName": "frcsim.json",
+  "name": "frcsim",
+  "version": "${version}",
+  "frcYear": "2026",
+  "uuid": "ea1aaf49-4520-4556-a7f0-0fa859d3c396",
+  "mavenUrls": [
+    "${mavenUrl}"
+  ],
+  "jsonUrl": "",
+  "javaDependencies": [
+    {
+      "groupId": "${group}",
+      "artifactId": "frcsim-java",
+      "version": "${version}"
+    }
+  ],
+  "jniDependencies": [
+    {
+      "groupId": "${group}",
+      "artifactId": "frcsim-native",
+      "version": "${version}",
+      "isJar": false,
+      "skipInvalidPlatforms": true,
+      "validPlatforms": [
+        "windowsx86-64",
+        "linuxx86-64",
+        "linuxarm64",
+        "osxuniversal"
+      ]
+    }
+  ],
+  "cppDependencies": []
+}

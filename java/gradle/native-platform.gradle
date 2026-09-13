@@ -1,0 +1,33 @@
+// Host platform detection shared by all modules. Names follow WPILib's native classifiers
+// (windowsx86-64, linuxx86-64, linuxarm64, osxuniversal) and install layout <os>/<arch>/shared.
+
+def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+def archName = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
+
+def platformOs = osName.contains('windows') ? 'windows' : (osName.contains('mac') ? 'osx' : 'linux')
+def platformArch
+if (archName in ['amd64', 'x86_64']) {
+  platformArch = 'x86-64'
+} else if (archName in ['aarch64', 'arm64']) {
+  platformArch = 'arm64'
+} else {
+  platformArch = archName
+}
+
+// Root of `cmake --install` output. Override with -Pfrcsim.nativeInstallRoot=<dir>.
+def installRoot = file(findProperty('frcsim.nativeInstallRoot') ?: "${rootDir}/../native/out")
+
+def libDir = new File(installRoot, "${platformOs}/${platformArch}/shared")
+// macOS release builds are lipo'd universal binaries; prefer them when present.
+def universalDir = new File(installRoot, "osx/universal/shared")
+if (platformOs == 'osx' && universalDir.isDirectory()) {
+  libDir = universalDir
+}
+
+ext.frcsimNative = [
+  os         : platformOs,
+  arch       : platformArch,
+  classifier : platformOs + platformArch,
+  installRoot: installRoot,
+  libDir     : libDir,
+]

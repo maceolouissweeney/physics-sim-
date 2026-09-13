@@ -1,0 +1,159 @@
+# CI: build + test the native core on every published desktop platform, then build the Java modules,
+# package the vendordep, and run the WPILib smoke robot against it.
+#
+# Status: written in Phase 0 but not yet run (no GitHub remote). Unverified parts are marked.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CMAKE_ARGS: -DFRCSIM_WARNINGS_AS_ERRORS=ON
+
+jobs:
+  native:
+    name: native (${{ matrix.classifier }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            classifier: windowsx86-64
+          - os: ubuntu-22.04 # oldest WPILib-supported Ubuntu, for glibc compatibility
+            classifier: linuxx86-64
+          - os: ubuntu-22.04-arm
+            classifier: linuxarm64
+          - os: macos-14
+            classifier: osxuniversal
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Linux toolchain (GCC 12, Ninja)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-12 ninja-build
+          echo "CC=gcc-12" >> "$GITHUB_ENV"
+          echo "CXX=g++-12" >> "$GITHUB_ENV"
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Build + test (Windows)
+        if: runner.os == 'Windows'
+        working-directory: native
+        run: |
+          cmake --preset windows-msvc ${{ env.CMAKE_ARGS }}
+          cmake --build --preset windows-msvc-release
+          ctest --preset windows-msvc-release
+          cmake --install build/windows-msvc --config Release
+
+      - name: Build + test (Linux)
+        if: runner.os == 'Linux'
+        working-directory: native
+        run: |
+          cmake --preset ninja-release ${{ env.CMAKE_ARGS }}
+          cmake --build --preset ninja-release
+          ctest --preset ninja-release
+          cmake --install build/ninja-release
+
+      # UNVERIFIED: cross-building the x86_64 slice on an arm64 runner with Jolt's SIMD flags.
+      - name: Build + test (macOS universal)
+        if: runner.os == 'macOS'
+        working-directory: native
+        run: |
+          cmake --preset macos-arm64 ${{ env.CMAKE_ARGS }}
+          cmake --build --preset macos-arm64
+          ctest --test-dir build/macos-arm64 --output-on-failure
+          cmake --preset macos-x86_64 ${{ env.CMAKE_ARGS }} -DFRCSIM_BUILD_TESTS=OFF
+          cmake --build --preset macos-x86_64
+          mkdir -p out/osx/universal/shared
+          lipo -create build/macos-arm64/bin/libfrcsim.dylib build/macos-x86_64/bin/libfrcsim.dylib \
+               -output out/osx/universal/shared/libfrcsim.dylib
+          lipo -info out/osx/universal/shared/libfrcsim.dylib
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.classifier }}
+          path: |
+            native/out/*/*/shared/
+          if-no-files-found: error
+
+  sanitizers:
+    name: native (ASan + UBSan)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-12 ninja-build
+      - name: Build + test
+        working-directory: native
+        env:
+          CC: gcc-12
+          CXX: g++-12
+        run: |
+          cmake --preset linux-asan
+          cmake --build --preset linux-asan
+          ctest --preset linux-asan
+
+  java:
+    name: java (${{ matrix.os }})
+    needs: native
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-22.04, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native/out
+          merge-multiple: true
+
+      - name: Build + test Java modules
+        working-directory: java
+        run: ./gradlew build --no-daemon
+
+      - name: Publish locally with all platforms + install smoke vendordep
+        working-directory: java
+        run: ./gradlew :frcsim-native:installSmokeRobotVendordep -Pfrcsim.requireAllPlatforms=true --no-daemon
+
+      - name: Smoke robot (WPILib 2026 project using the vendordep)
+        working-directory: examples/smoke-robot
+        run: ./gradlew test --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-22.04'
+        with:
+          name: maven-repo
+          path: |
+            java/build/repo/
+            java/frcsim-native/build/vendordep/frcsim.json

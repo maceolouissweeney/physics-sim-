@@ -1,0 +1,89 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/out",
+      "cacheVariables": { "CMAKE_EXPORT_COMPILE_COMMANDS": "ON" }
+    },
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows x64 - Visual Studio 2022 (multi-config)",
+      "inherits": "base",
+      "generator": "Visual Studio 17 2022",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "ninja-release",
+      "displayName": "Ninja Release (Linux/macOS, or Windows Developer Prompt)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "ninja-debug",
+      "displayName": "Ninja Debug",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "linux-asan",
+      "displayName": "Linux Debug + ASan/UBSan",
+      "inherits": "ninja-debug",
+      "cacheVariables": { "FRCSIM_SANITIZE": "address,undefined" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "macos-arm64",
+      "displayName": "macOS arm64 slice (combine with lipo)",
+      "inherits": "ninja-release",
+      "cacheVariables": { "CMAKE_OSX_ARCHITECTURES": "arm64" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "macos-x86_64",
+      "displayName": "macOS x86_64 slice (combine with lipo)",
+      "inherits": "ninja-release",
+      "cacheVariables": { "CMAKE_OSX_ARCHITECTURES": "x86_64" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "bench",
+      "displayName": "Ninja Release + benchmarks",
+      "inherits": "ninja-release",
+      "cacheVariables": { "FRCSIM_BUILD_BENCH": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows-msvc-release", "configurePreset": "windows-msvc", "configuration": "Release" },
+    { "name": "windows-msvc-debug", "configurePreset": "windows-msvc", "configuration": "Debug" },
+    { "name": "ninja-release", "configurePreset": "ninja-release" },
+    { "name": "ninja-debug", "configurePreset": "ninja-debug" },
+    { "name": "linux-asan", "configurePreset": "linux-asan" },
+    { "name": "macos-arm64", "configurePreset": "macos-arm64" },
+    { "name": "macos-x86_64", "configurePreset": "macos-x86_64" },
+    { "name": "bench", "configurePreset": "bench" }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-msvc-release",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "windows-msvc-debug",
+      "configurePreset": "windows-msvc",
+      "configuration": "Debug",
+      "output": { "outputOnFailure": true }
+    },
+    { "name": "ninja-release", "configurePreset": "ninja-release", "output": { "outputOnFailure": true } },
+    { "name": "ninja-debug", "configurePreset": "ninja-debug", "output": { "outputOnFailure": true } },
+    { "name": "linux-asan", "configurePreset": "linux-asan", "output": { "outputOnFailure": true } }
+  ]
+}

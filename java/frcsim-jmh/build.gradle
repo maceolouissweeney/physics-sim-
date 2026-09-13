@@ -1,0 +1,43 @@
+// JMH microbenchmarks for the Java binding: JNI crossing cost, step overhead, zero-copy reads.
+//
+//   ./gradlew :frcsim-jmh:jmh
+//
+// Results: frcsim-jmh/build/results/jmh/results.json. Record notable numbers in docs/perf/.
+
+plugins {
+  id 'java'
+  id 'me.champeau.jmh' version '0.7.3'
+  id 'com.diffplug.spotless'
+}
+
+description = 'frcsim JMH benchmarks (not published)'
+
+dependencies {
+  jmh project(':frcsim-core')
+}
+
+jmh {
+  jmhVersion = '1.37'
+  fork = 1
+  warmupIterations = 3
+  warmup = '1s'
+  iterations = 5
+  timeOnIteration = '1s'
+  resultFormat = 'JSON'
+  jvmArgsAppend = [
+    "-Djava.library.path=${rootProject.frcsimNative.libDir.absolutePath}".toString(),
+    "-Dfrcsim.repoDir=${rootProject.file('..').absolutePath}".toString(),
+  ]
+}
+
+// JMH's generated sources trigger lint warnings; keep -Xlint output but don't fail on it.
+tasks.matching { it.name == 'compileJmhJava' }.configureEach {
+  options.compilerArgs.remove('-Werror')
+}
+
+spotless {
+  java {
+    target 'src/**/*.java'
+    googleJavaFormat('1.28.0') // see frcsim-core/build.gradle (D13)
+  }
+}

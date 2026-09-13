@@ -1,0 +1,46 @@
+plugins {
+  id 'com.diffplug.spotless' version '8.10.2' apply false
+}
+
+apply from: 'gradle/native-platform.gradle'
+
+// Single source of truth for the version, shared with CMake.
+def frcsimVersion = file('../VERSION').text.trim()
+
+allprojects {
+  group = 'org.frcsim' // placeholder, decision D1
+  version = frcsimVersion
+}
+
+subprojects {
+  repositories {
+    mavenCentral()
+  }
+
+  pluginManager.withPlugin('java') {
+    java {
+      withSourcesJar()
+      withJavadocJar()
+    }
+    tasks.withType(JavaCompile).configureEach {
+      options.release = 17 // WPILib 2026
+      options.encoding = 'UTF-8'
+      options.compilerArgs.addAll(['-Xlint:all', '-Werror'])
+    }
+    tasks.withType(Javadoc).configureEach {
+      options.encoding = 'UTF-8'
+      options.addBooleanOption('Xdoclint:all,-missing', true)
+    }
+  }
+
+  pluginManager.withPlugin('maven-publish') {
+    publishing {
+      repositories {
+        maven {
+          name = 'localRepo'
+          url = rootProject.layout.buildDirectory.dir('repo')
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# Compiler settings applied to frcsim's own targets (not third-party code).
+
+function(frcsim_configure_target target)
+    target_compile_features(${target} PUBLIC cxx_std_20)
+
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /Zc:__cplusplus /MP)
+        if(FRCSIM_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wnon-virtual-dtor)
+        if(FRCSIM_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
+    endif()
+
+    if(FRCSIM_SANITIZE)
+        if(MSVC)
+            message(WARNING "frcsim: FRCSIM_SANITIZE is ignored for MSVC")
+        else()
+            target_compile_options(${target} PRIVATE -fsanitize=${FRCSIM_SANITIZE} -fno-omit-frame-pointer)
+            target_link_options(${target} PRIVATE -fsanitize=${FRCSIM_SANITIZE})
+        endif()
+    endif()
+endfunction()

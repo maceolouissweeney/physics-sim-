@@ -1,0 +1,104 @@
+// Packages prebuilt native libraries (from `cmake --install`) into WPILib-style JNI zips and publishes
+// them as org.frcsim:frcsim-native:<version>:<classifier>@zip, the coordinates GradleRIO resolves for
+// vendordep jniDependencies (see docs/adr/0002-native-packaging.md).
+
+plugins {
+  id 'base'
+  id 'maven-publish'
+}
+
+description = 'frcsim native libraries packaged as WPILib JNI zips'
+
+// Published desktop platforms. Directory layout inside the install root and inside each zip:
+// <os>/<arch>/shared/<library>.
+def platforms = [
+  [classifier: 'windowsx86-64', dir: 'windows/x86-64'],
+  [classifier: 'linuxx86-64', dir: 'linux/x86-64'],
+  [classifier: 'linuxarm64', dir: 'linux/arm64'],
+  [classifier: 'osxuniversal', dir: 'osx/universal'],
+]
+
+def installRoot = rootProject.frcsimNative.installRoot
+// CI release builds pass -Pfrcsim.requireAllPlatforms=true so a missing platform fails the build.
+def requireAllPlatforms = (findProperty('frcsim.requireAllPlatforms') ?: 'false').toBoolean()
+
+def nativeZips = []
+platforms.each { platform ->
+  def libDir = new File(installRoot, "${platform.dir}/shared")
+  if (!libDir.isDirectory()) {
+    if (requireAllPlatforms) {
+      throw new GradleException("Missing native build for ${platform.classifier}: ${libDir}")
+    }
+    logger.info("frcsim-native: skipping ${platform.classifier} (no ${libDir})")
+    return
+  }
+  // GradleRIO requests '<platform>debug' when a project sets wpi.java.debugJni = true. We ship the
+  // release binary under both classifiers; physics in a debug build would be too slow to be useful.
+  ['', 'debug'].each { suffix ->
+    def classifier = platform.classifier + suffix
+    def zipTask = tasks.register("nativeZip-${classifier}", Zip) {
+      group = 'distribution'
+      description = "Packages the ${classifier} native library zip."
+      archiveBaseName = 'frcsim-native'
+      archiveClassifier = classifier
+      destinationDirectory = layout.buildDirectory.dir('native-zips')
+      from(libDir) {
+        include '*.dll', '*.pdb', '*.so', '*.dylib'
+        into "${platform.dir}/shared"
+      }
+    }
+    nativeZips << [task: zipTask, classifier: classifier]
+  }
+}
+
+tasks.named('assemble') {
+  dependsOn nativeZips.collect { it.task }
+}
+
+publishing {
+  publications {
+    maven(MavenPublication) {
+      artifactId = 'frcsim-native'
+      nativeZips.each { zip ->
+        artifact(zip.task) {
+          classifier = zip.classifier
+          extension = 'zip'
+        }
+      }
+    }
+  }
+}
+
+// ---- Vendordep ---------------------------------------------------------------------------------------
+
+// Maven URL written into the vendordep. Defaults to the local file repo for end-to-end testing.
+def vendordepMavenUrl = findProperty('frcsim.vendordepMavenUrl') ?:
+    rootProject.layout.buildDirectory.dir('repo').get().asFile.toURI().toString()
+
+def generateVendordep = tasks.register('generateVendordep', Copy) {
+  group = 'distribution'
+  description = 'Generates frcsim.json (WPILib vendordep) from vendordep/frcsim.json.in.'
+  def props = [version: project.version.toString(), group: project.group.toString(), mavenUrl: vendordepMavenUrl]
+  inputs.properties(props)
+  from(rootProject.file('../vendordep/frcsim.json.in'))
+  into(layout.buildDirectory.dir('vendordep'))
+  rename { 'frcsim.json' }
+  filteringCharset = 'UTF-8'
+  expand(props)
+}
+
+tasks.register('publishLocal') {
+  group = 'publishing'
+  description = 'Publishes frcsim-java and frcsim-native to java/build/repo and generates the vendordep.'
+  dependsOn ':frcsim-core:publishAllPublicationsToLocalRepoRepository',
+      'publishAllPublicationsToLocalRepoRepository',
+      generateVendordep
+}
+
+tasks.register('installSmokeRobotVendordep', Copy) {
+  group = 'distribution'
+  description = 'Publishes locally and installs the vendordep into examples/smoke-robot.'
+  dependsOn 'publishLocal'
+  from(generateVendordep)
+  into(rootProject.file('../examples/smoke-robot/vendordeps'))
+}

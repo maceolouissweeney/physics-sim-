@@ -1,0 +1,15 @@
+{
+  "schema": "frcsim.field/1",
+  "name": "test-flat: REBUILT-sized flat carpet with perimeter walls (approximate dimensions)",
+  "ground": { "material": "carpet", "height": 0.0 },
+  "statics": [
+    { "type": "box", "name": "wall-blue", "material": "polycarbonate", "center": [-0.05, 4.035, 0.25], "halfExtents": [0.05, 4.135, 0.25] },
+    { "type": "box", "name": "wall-red", "material": "polycarbonate", "center": [16.59, 4.035, 0.25], "halfExtents": [0.05, 4.135, 0.25] },
+    { "type": "box", "name": "wall-right", "material": "polycarbonate", "center": [8.27, -0.05, 0.25], "halfExtents": [8.37, 0.05, 0.25] },
+    { "type": "box", "name": "wall-left", "material": "polycarbonate", "center": [8.27, 8.12, 0.25], "halfExtents": [8.37, 0.05, 0.25] }
+  ],
+  "bounds": { "min": [-1.0, -1.0, -1.0], "max": [17.54, 9.07, 10.0] },
+  "pieceTypes": {
+    "fuel": { "shape": "sphere", "radius": 0.075, "mass": 0.215, "material": "foam" }
+  }
+}

@@ -1,0 +1,26 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+IndentWidth: 4
+ColumnLimit: 110
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBraces: Attach
+DerivePointerAlignment: false
+PointerAlignment: Left
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<frcsim/'
+    Priority: 3
+  - Regex: '^<Jolt/'
+    Priority: 2
+  - Regex: '^<.*>'
+    Priority: 1
+  - Regex: '.*'
+    Priority: 4
+NamespaceIndentation: None
+SortIncludes: CaseSensitive

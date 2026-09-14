@@ -315,6 +315,58 @@ public final class FrcSimJNI {
    */
   public static native ByteBuffer pieceStatesBuffer(long world);
 
+  // ---- Robots -------------------------------------------------------------------------------
+
+  /**
+   * Adds a swerve robot.
+   *
+   * @param world native handle
+   * @param robotParams packed robot fields ({@code SwerveDriveConfig.packRobot})
+   * @param bumperMaterial bumper material id
+   * @param moduleParams packed modules ({@code SwerveDriveConfig.packModules})
+   * @param x field x
+   * @param y field y
+   * @param yaw heading
+   * @return robot index
+   */
+  public static native int robotAddSwerve(
+      long world,
+      float[] robotParams,
+      int bumperMaterial,
+      float[] moduleParams,
+      float x,
+      float y,
+      float yaw);
+
+  /**
+   * Direct buffer over a robot's {@code frcsim_swerve_robot_io} block (native byte order).
+   *
+   * @param world native handle
+   * @param robot robot index
+   * @return buffer valid until the world is destroyed
+   */
+  public static native ByteBuffer robotIoBuffer(long world, int robot);
+
+  /**
+   * Places a robot on the carpet at rest.
+   *
+   * @param world native handle
+   * @param robot robot index
+   * @param x field x
+   * @param y field y
+   * @param yaw heading
+   */
+  public static native void robotResetPose(long world, int robot, float x, float y, float yaw);
+
+  /**
+   * Native robot I/O layout: {@code [robot size, yaw, qx, vx, wx, battery voltage, brownout, module
+   * count, modules, module size, drive rotor position, steer angle, drive rotor velocity, steer
+   * velocity, drive applied voltage, normal force, slip speed]}.
+   *
+   * @return layout array
+   */
+  public static native int[] robotIoLayout();
+
   // ---- Kinematic bodies ---------------------------------------------------------------------
 
   /**

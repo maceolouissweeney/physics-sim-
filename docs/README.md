@@ -16,10 +16,11 @@
 |---|---|
 | [0001](adr/0001-cpp-core-jolt-jni.md) | C++ core on Jolt Physics, exposed via C ABI + JNI |
 | [0002](adr/0002-native-packaging.md) | Native library packaging as WPILib JNI zips + vendordep |
+| [0003](adr/0003-swerve-tire-solver.md) | Swerve drivetrain as a custom Jolt `VehicleController` |
 
 Smaller decisions are recorded in the decision log in [IMPLEMENTATION_PLAN.md §2](IMPLEMENTATION_PLAN.md).
 
 ## Planned documents
-- `adr/0003-swerve-tire-solver.md`: outcome of the Phase 2 Jolt vehicle spike
-- `models/`: physics model references with equations: swerve (Phase 2), projectiles and mechanisms (Phase 4)
+- `models/`: projectiles and mechanisms (Phase 4). The swerve model is done:
+  [models/swerve.md](models/swerve.md)
 - `guides/`: quickstart, CTRE/REV integration, authoring a field

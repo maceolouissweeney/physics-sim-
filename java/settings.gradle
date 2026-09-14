@@ -7,5 +7,6 @@ pluginManagement {
 rootProject.name = 'frcsim'
 
 include 'frcsim-core'
+include 'frcsim-wpilib'
 include 'frcsim-native'
 include 'frcsim-jmh'

@@ -9,6 +9,7 @@
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 
+#include "drive/swerve_robot.h"
 #include "field/field.h"
 #include "pieces/piece_pool.h"
 #include "pieces/piece_type.h"
@@ -88,6 +89,8 @@ public:
     [[nodiscard]] const PiecePool& pieces() const { return *m_pieces; }
     [[nodiscard]] KinematicBodies& kinematics() { return *m_kinematics; }
     [[nodiscard]] DrivenBodies& driven() { return *m_driven; }
+    [[nodiscard]] Robots& robots() { return *m_robots; }
+    [[nodiscard]] const Robots& robots() const { return *m_robots; }
 
 private:
     // Declaration order is lifetime order (reverse destruction): the runtime comes first; the layer
@@ -108,6 +111,7 @@ private:
     std::unique_ptr<PiecePool> m_pieces;
     std::unique_ptr<KinematicBodies> m_kinematics;
     std::unique_ptr<DrivenBodies> m_driven;
+    std::unique_ptr<Robots> m_robots;
 
     WorldStats m_stats;
     bool m_broadPhaseOptimized = false;

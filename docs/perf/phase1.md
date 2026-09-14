@@ -79,6 +79,55 @@ thread count. Collision detection, not the solver, dominates, so defaults stay (
   4. Sleep tuning so pieces at the edge of a disturbed pile fall asleep sooner.
 - Not yet measured: Linux/macOS numbers (CI).
 
+## Phase 2 swerve scenarios: measurements pending
+
+Added scenarios (`native/bench/scenario_runner.cpp`):
+
+| Scenario | Description |
+|---|---|
+| `swerve_2_360` | 360 packed fuel + 2 full swerve robots (motors, tires, battery) driving back and forth through them |
+| `swerve_6_504` | 504 packed fuel + 6 swerve robots (stress) |
+
+**No valid numbers yet.** The 2026-09-14 runs happened with the laptop **on battery (16%)**, Balanced power
+plan, CPU clocked at **801 of 2304 MHz**, and 62% background load (AdvantageScope, browser, lingering JVMs).
+Under those conditions even the unchanged Phase 1 scenarios were about 2× slower than this report's
+AC-power numbers (`awake_360_plow` p50 2.75 ms vs 1.45 ms), and repeat runs drifted by more than 2×. They
+are not recorded as results.
+
+To re-measure: plug in AC power, select the High performance plan, close AdvantageScope and browsers,
+run `gradlew --stop`, then run each scenario three times with `--threads 2 --periods 500` and record
+the median p50/p95.
+
+### Second pass (2026-09-14, AC power): provisional
+
+On AC power but with the battery at 17%, the CPU stayed clocked at **801 of 2304 MHz** (firmware power
+limiting), so these are still not full-speed numbers. Background load was about 10%. Three runs,
+`--threads 2 --periods 500`:
+
+| Scenario | Run 1 p50 | Run 2 p50 | Run 3 p50 | p95 (median run) | Notes |
+|---|---|---|---|---|---|
+| `empty_field` | 0.091 | 0.163 | 0.178 | 0.229 | run 1 matches the Phase 1 report (0.100) |
+| `sleeping_504` | 0.094 | 0.163 | 0.173 | 0.209 | run 1 matches Phase 1 (0.104) |
+| `awake_360_plow` | 1.59 | 2.89 | 3.06 | 4.19 | run 1 close to Phase 1 (1.45); later runs throttled |
+| `swerve_2_360` | 2.88 | 2.83 | 2.78 | 5.69 | 2 full swerve robots + 360 packed fuel |
+| `swerve_6_504` | 4.13 | 4.08 | 3.98 | 7.97 | 6 swerve robots + 504 packed fuel |
+
+Takeaways, valid despite throttling:
+- **No regression** in the piece simulation from the swerve work: the first, un-throttled run matched the
+  Phase 1 numbers.
+- Full swerve robots are more expensive than driven stand-ins, because each adds 4 wheel cylinder casts
+  and vehicle constraint solving per substep. `swerve_2_360` ≈ 2.8 ms, and even the 6-robot stress test
+  stays **≈ 5× faster than real time**.
+- The thread sweep again favors 2–3 workers (`swerve_2_360`: 4.23 / 3.31 / 2.83 / 2.68 ms for 0 / 1 / 2 / 3).
+- Re-measure once the CPU reaches full clock speed before closing the Phase 2 performance gate.
+
+Observation that holds regardless of throttling: in `swerve_6_504` two pieces escaped through the
+10 cm walls, pinned between a robot and the wall. The test field's wall collision boxes are now 50 cm
+thick, extending outward so the play area is unchanged. **Still open:** with thick walls, 3 of 504
+pieces escaped in `swerve_6_504`, at exit heights up to 0.44 m. They appear to be squeezed upward
+over the 0.5 m wall by robots pinning them. Investigate contact softness and penetration recovery for
+pinned pieces in Phase 3 against real field wall heights.
+
 ## Java binding overhead (JMH)
 
 `./gradlew :frcsim-jmh:jmh` (JMH 1.37, Temurin 17, 1 fork, 3 × 1 s warmup, 5 × 1 s measurement).

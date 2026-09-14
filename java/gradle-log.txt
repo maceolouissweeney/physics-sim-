@@ -1,0 +1,67 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :frcsim-core:spotlessJava
+> Task :frcsim-core:spotlessJavaApply
+> Task :frcsim-core:spotlessApply
+> Task :frcsim-jmh:spotlessJava UP-TO-DATE
+> Task :frcsim-jmh:spotlessJavaApply UP-TO-DATE
+> Task :frcsim-jmh:spotlessApply UP-TO-DATE
+> Task :frcsim-wpilib:spotlessJava
+> Task :frcsim-wpilib:spotlessJavaApply
+> Task :frcsim-wpilib:spotlessApply
+> Task :frcsim-core:compileJava
+> Task :frcsim-core:processResources NO-SOURCE
+> Task :frcsim-core:classes
+> Task :frcsim-core:jar
+> Task :frcsim-core:javadoc
+> Task :frcsim-core:javadocJar
+> Task :frcsim-core:sourcesJar
+> Task :frcsim-core:assemble
+> Task :frcsim-core:spotlessJavaCheck
+> Task :frcsim-core:spotlessCheck
+> Task :frcsim-core:compileTestJava
+> Task :frcsim-core:processTestResources NO-SOURCE
+> Task :frcsim-core:testClasses
+> Task :frcsim-core:test
+> Task :frcsim-core:check
+> Task :frcsim-core:build
+> Task :frcsim-jmh:compileJava NO-SOURCE
+> Task :frcsim-jmh:processResources NO-SOURCE
+> Task :frcsim-jmh:classes UP-TO-DATE
+> Task :frcsim-jmh:jar UP-TO-DATE
+> Task :frcsim-jmh:javadoc NO-SOURCE
+> Task :frcsim-jmh:javadocJar UP-TO-DATE
+> Task :frcsim-jmh:sourcesJar UP-TO-DATE
+> Task :frcsim-jmh:assemble UP-TO-DATE
+> Task :frcsim-jmh:spotlessJavaCheck UP-TO-DATE
+> Task :frcsim-jmh:spotlessCheck UP-TO-DATE
+> Task :frcsim-jmh:compileTestJava NO-SOURCE
+> Task :frcsim-jmh:processTestResources NO-SOURCE
+> Task :frcsim-jmh:testClasses UP-TO-DATE
+> Task :frcsim-jmh:test NO-SOURCE
+> Task :frcsim-jmh:check UP-TO-DATE
+> Task :frcsim-jmh:build UP-TO-DATE
+> Task :frcsim-native:nativeZip-windowsx86-64
+> Task :frcsim-native:nativeZip-windowsx86-64debug
+> Task :frcsim-native:assemble
+> Task :frcsim-native:check UP-TO-DATE
+> Task :frcsim-native:build
+> Task :frcsim-wpilib:compileJava
+> Task :frcsim-wpilib:processResources NO-SOURCE
+> Task :frcsim-wpilib:classes
+> Task :frcsim-wpilib:jar
+> Task :frcsim-wpilib:javadoc
+> Task :frcsim-wpilib:javadocJar UP-TO-DATE
+> Task :frcsim-wpilib:sourcesJar
+> Task :frcsim-wpilib:assemble
+> Task :frcsim-wpilib:spotlessJavaCheck
+> Task :frcsim-wpilib:spotlessCheck
+> Task :frcsim-wpilib:compileTestJava
+> Task :frcsim-wpilib:processTestResources NO-SOURCE
+> Task :frcsim-wpilib:testClasses
+> Task :frcsim-wpilib:test
+> Task :frcsim-wpilib:check
+> Task :frcsim-wpilib:build
+
+BUILD SUCCESSFUL in 34s
+28 actionable tasks: 21 executed, 7 up-to-date

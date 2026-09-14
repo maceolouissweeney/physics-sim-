@@ -91,6 +91,7 @@ tasks.register('publishLocal') {
   group = 'publishing'
   description = 'Publishes frcsim-java and frcsim-native to java/build/repo and generates the vendordep.'
   dependsOn ':frcsim-core:publishAllPublicationsToLocalRepoRepository',
+      ':frcsim-wpilib:publishAllPublicationsToLocalRepoRepository',
       'publishAllPublicationsToLocalRepoRepository',
       generateVendordep
 }

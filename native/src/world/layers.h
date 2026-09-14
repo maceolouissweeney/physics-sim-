@@ -14,13 +14,16 @@ namespace frcsim {
  *   Robot   - robot chassis, mechanism shapes, kinematic and driven bodies.
  *   Piece   - game pieces (on field or airborne).
  *   Sensor  - trigger volumes (goals, intake zones). Detect overlaps, generate no contact forces.
+ *   WheelProbe - query-only layer (no bodies) for swerve wheel ground probes: hits static field geometry
+ *                only, so wheels roll on the carpet/ramps and bumpers (not wheels) push game pieces.
  */
 namespace ObjectLayers {
 inline constexpr JPH::ObjectLayer kStatic = 0;
 inline constexpr JPH::ObjectLayer kRobot = 1;
 inline constexpr JPH::ObjectLayer kPiece = 2;
 inline constexpr JPH::ObjectLayer kSensor = 3;
-inline constexpr JPH::uint kCount = 4;
+inline constexpr JPH::ObjectLayer kWheelProbe = 4;
+inline constexpr JPH::uint kCount = 5;
 } // namespace ObjectLayers
 
 /**
@@ -70,6 +73,8 @@ public:
             return false; // statics never query
         case ObjectLayers::kSensor:
             return broadPhaseLayer != BroadPhaseLayers::kNonMoving; // sensors only care about moving things
+        case ObjectLayers::kWheelProbe:
+            return broadPhaseLayer == BroadPhaseLayers::kNonMoving; // wheels only touch field geometry
         default:
             return true;
         }
@@ -83,6 +88,9 @@ public:
         const bool bStatic = b == ObjectLayers::kStatic;
         const bool aSensor = a == ObjectLayers::kSensor;
         const bool bSensor = b == ObjectLayers::kSensor;
+        if (a == ObjectLayers::kWheelProbe || b == ObjectLayers::kWheelProbe) {
+            return aStatic || bStatic;
+        }
         if (aStatic && bStatic) {
             return false;
         }

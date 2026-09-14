@@ -25,6 +25,7 @@ public final class SimWorld implements AutoCloseable {
   private final Field field;
   private final GamePieces pieces;
   private final KinematicBodies kinematics;
+  private final Robots robots;
 
   private SimWorld(WorldConfig config, long nativePointer) {
     this.config = config;
@@ -41,6 +42,7 @@ public final class SimWorld implements AutoCloseable {
               FrcSimJNI.pieceStatesBuffer(nativePointer),
               config.maxPieces());
       this.kinematics = new KinematicBodies(this);
+      this.robots = new Robots(this);
     } catch (RuntimeException e) {
       cleanable.clean();
       throw e;
@@ -166,6 +168,15 @@ public final class SimWorld implements AutoCloseable {
    */
   public KinematicBodies kinematics() {
     return kinematics;
+  }
+
+  /**
+   * Robots (swerve drivetrains).
+   *
+   * @return robots
+   */
+  public Robots robots() {
+    return robots;
   }
 
   /**

@@ -13,6 +13,11 @@
       "groupId": "${group}",
       "artifactId": "frcsim-java",
       "version": "${version}"
+    },
+    {
+      "groupId": "${group}",
+      "artifactId": "frcsim-wpilib",
+      "version": "${version}"
     }
   ],
   "jniDependencies": [

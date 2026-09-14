@@ -4,6 +4,8 @@
 // reuse the same surface. Failures become Java exceptions; nothing here may crash the JVM on bad input.
 // Arrays are copied (Get*ArrayRegion) rather than pinned: these calls happen at setup time, not per tick.
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -411,6 +413,166 @@ JNIEXPORT jobject JNICALL Java_org_frcsim_jni_FrcSimJNI_pieceStatesBuffer(JNIEnv
         return nullptr;
     }
     return env->NewDirectByteBuffer(const_cast<uint8_t*>(buffers.states), static_cast<jlong>(buffers.capacity));
+}
+
+/* ---- Robots -------------------------------------------------------------------------------------- */
+
+namespace {
+
+// Packing order of SwerveDriveConfig.packRobot() / SwerveModuleConfig.packInto() in Java.
+enum RobotParam : int {
+    kMass, kFrameHalfX, kFrameHalfY, kBumperBottom, kBumperHeight, kComX, kComY, kComHeight, kYawInertia,
+    kSuspensionTravel, kSuspensionFrequency, kSuspensionDamping,
+    kBatteryVoltage, kBatteryResistance, kBatteryBrownout, kBatteryRecovery,
+    kGyroYawNoise, kGyroYawDriftRate, kGyroScaleError, kDriveEncoderCountsPerRev, kSensorSeed,
+    kRobotParamCount
+};
+enum ModuleParam : int {
+    kModuleX = 0, kModuleY = 1, kWheelRadius = 2, kWheelWidth = 3, kWheelInertia = 4,
+    kDriveMotor = 5, kDriveGearRatio = 12, kDriveEfficiency = 13, kDriveFriction = 14, kDriveStatorLimit = 15,
+    kDriveSupplyLimit = 16, kDriveNeutral = 17,
+    kSteerMotor = 18, kSteerGearRatio = 25, kSteerEfficiency = 26, kSteerInertia = 27, kSteerFriction = 28,
+    kSteerStatorLimit = 29, kSteerSupplyLimit = 30, kSteerNeutral = 31,
+    kTireStatic = 32, kTireKinetic = 33, kTireTransition = 34, kScrubRadius = 35,
+    kModuleParamCount = 36
+};
+
+frcsim_motor_params unpackMotor(const float* p) {
+    return frcsim_motor_params{p[0], p[1], p[2], p[3], p[4], static_cast<int32_t>(std::lround(p[5])), p[6]};
+}
+
+} // namespace
+
+JNIEXPORT jint JNICALL Java_org_frcsim_jni_FrcSimJNI_robotAddSwerve(JNIEnv* env, jclass, jlong handle,
+                                                                     jfloatArray robotParams, jint bumperMaterial,
+                                                                     jfloatArray moduleParams, jfloat x, jfloat y,
+                                                                     jfloat yaw) {
+    frcsim_world* world = worldFromHandle(env, handle);
+    if (world == nullptr) {
+        return -1;
+    }
+    if (robotParams == nullptr || moduleParams == nullptr) {
+        throwJava(env, "java/lang/NullPointerException", "robot and module parameters must not be null");
+        return -1;
+    }
+    const std::vector<float> r = copyFloats(env, robotParams);
+    const std::vector<float> m = copyFloats(env, moduleParams);
+    const std::size_t moduleCount = m.size() / kModuleParamCount;
+    if (r.size() != kRobotParamCount || m.size() % kModuleParamCount != 0 || moduleCount == 0 ||
+        moduleCount > FRCSIM_MAX_SWERVE_MODULES) {
+        throwJava(env, "java/lang/IllegalArgumentException", "malformed packed swerve configuration");
+        return -1;
+    }
+    if (bumperMaterial < 0 || bumperMaterial > 255) {
+        throwJava(env, "java/util/NoSuchElementException", "bumper material id out of range");
+        return -1;
+    }
+
+    frcsim_swerve_config c;
+    frcsim_swerve_config_init(&c, 0.5f, 0.5f);
+    c.mass = r[kMass];
+    c.frame_half_x = r[kFrameHalfX];
+    c.frame_half_y = r[kFrameHalfY];
+    c.bumper_bottom = r[kBumperBottom];
+    c.bumper_height = r[kBumperHeight];
+    c.com_x = r[kComX];
+    c.com_y = r[kComY];
+    c.com_height = r[kComHeight];
+    c.yaw_inertia = r[kYawInertia];
+    c.bumper_material = static_cast<frcsim_material_id>(bumperMaterial);
+    c.suspension_travel = r[kSuspensionTravel];
+    c.suspension_frequency = r[kSuspensionFrequency];
+    c.suspension_damping_ratio = r[kSuspensionDamping];
+    c.battery_open_circuit_voltage = r[kBatteryVoltage];
+    c.battery_internal_resistance = r[kBatteryResistance];
+    c.battery_brownout_voltage = r[kBatteryBrownout];
+    c.battery_brownout_recovery_voltage = r[kBatteryRecovery];
+    c.gyro_yaw_noise = r[kGyroYawNoise];
+    c.gyro_yaw_drift_rate = r[kGyroYawDriftRate];
+    c.gyro_scale_error = r[kGyroScaleError];
+    c.drive_encoder_counts_per_rev = static_cast<uint32_t>(std::lround(std::max(0.0f, r[kDriveEncoderCountsPerRev])));
+    c.sensor_seed = static_cast<uint32_t>(std::lround(std::max(0.0f, r[kSensorSeed])));
+    c.module_count = static_cast<uint32_t>(moduleCount);
+    for (std::size_t i = 0; i < moduleCount; ++i) {
+        const float* p = m.data() + i * kModuleParamCount;
+        frcsim_swerve_module_config& mc = c.modules[i];
+        mc.x = p[kModuleX];
+        mc.y = p[kModuleY];
+        mc.wheel_radius = p[kWheelRadius];
+        mc.wheel_width = p[kWheelWidth];
+        mc.wheel_inertia = p[kWheelInertia];
+        mc.drive_motor = unpackMotor(p + kDriveMotor);
+        mc.drive_gear_ratio = p[kDriveGearRatio];
+        mc.drive_efficiency = p[kDriveEfficiency];
+        mc.drive_friction_torque = p[kDriveFriction];
+        mc.drive_stator_current_limit = p[kDriveStatorLimit];
+        mc.drive_supply_current_limit = p[kDriveSupplyLimit];
+        mc.drive_neutral_mode = static_cast<int32_t>(std::lround(p[kDriveNeutral]));
+        mc.steer_motor = unpackMotor(p + kSteerMotor);
+        mc.steer_gear_ratio = p[kSteerGearRatio];
+        mc.steer_efficiency = p[kSteerEfficiency];
+        mc.steer_inertia = p[kSteerInertia];
+        mc.steer_friction_torque = p[kSteerFriction];
+        mc.steer_stator_current_limit = p[kSteerStatorLimit];
+        mc.steer_supply_current_limit = p[kSteerSupplyLimit];
+        mc.steer_neutral_mode = static_cast<int32_t>(std::lround(p[kSteerNeutral]));
+        mc.tire_static_friction = p[kTireStatic];
+        mc.tire_kinetic_friction = p[kTireKinetic];
+        mc.tire_transition_slip_speed = p[kTireTransition];
+        mc.scrub_radius = p[kScrubRadius];
+    }
+
+    uint32_t robot = 0;
+    return check(env, frcsim_robot_add_swerve(world, &c, x, y, yaw, &robot)) ? -1 : static_cast<jint>(robot);
+}
+
+JNIEXPORT jobject JNICALL Java_org_frcsim_jni_FrcSimJNI_robotIoBuffer(JNIEnv* env, jclass, jlong handle, jint robot) {
+    frcsim_world* world = worldFromHandle(env, handle);
+    if (world == nullptr) {
+        return nullptr;
+    }
+    frcsim_swerve_robot_io* io = robot >= 0 ? frcsim_robot_io(world, static_cast<uint32_t>(robot)) : nullptr;
+    if (io == nullptr) {
+        throwJava(env, "java/util/NoSuchElementException", "robot index out of range");
+        return nullptr;
+    }
+    return env->NewDirectByteBuffer(io, static_cast<jlong>(sizeof(frcsim_swerve_robot_io)));
+}
+
+JNIEXPORT void JNICALL Java_org_frcsim_jni_FrcSimJNI_robotResetPose(JNIEnv* env, jclass, jlong handle, jint robot,
+                                                                     jfloat x, jfloat y, jfloat yaw) {
+    if (frcsim_world* world = worldFromHandle(env, handle)) {
+        check(env, frcsim_robot_reset_pose(world, static_cast<uint32_t>(robot), x, y, yaw));
+    }
+}
+
+JNIEXPORT jintArray JNICALL Java_org_frcsim_jni_FrcSimJNI_robotIoLayout(JNIEnv* env, jclass) {
+    const jint layout[] = {
+        static_cast<jint>(sizeof(frcsim_swerve_robot_io)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, yaw)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, qx)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, vx)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, wx)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, battery_voltage)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, brownout)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, module_count)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, modules)),
+        static_cast<jint>(sizeof(frcsim_swerve_module_io)),
+        static_cast<jint>(offsetof(frcsim_swerve_module_io, drive_rotor_position)),
+        static_cast<jint>(offsetof(frcsim_swerve_module_io, steer_angle)),
+        static_cast<jint>(offsetof(frcsim_swerve_module_io, drive_rotor_velocity)),
+        static_cast<jint>(offsetof(frcsim_swerve_module_io, steer_velocity)),
+        static_cast<jint>(offsetof(frcsim_swerve_module_io, drive_applied_voltage)),
+        static_cast<jint>(offsetof(frcsim_swerve_module_io, normal_force)),
+        static_cast<jint>(offsetof(frcsim_swerve_module_io, slip_speed)),
+        static_cast<jint>(offsetof(frcsim_swerve_robot_io, gyro_yaw)),
+    };
+    const jsize n = static_cast<jsize>(sizeof(layout) / sizeof(layout[0]));
+    jintArray result = env->NewIntArray(n);
+    if (result != nullptr) {
+        env->SetIntArrayRegion(result, 0, n, layout);
+    }
+    return result;
 }
 
 /* ---- Kinematic bodies ---------------------------------------------------------------------------- */

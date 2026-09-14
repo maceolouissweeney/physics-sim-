@@ -36,6 +36,32 @@ All notable changes to this project are documented here. Format follows
   - `frcsim-jmh` module: JMH benchmarks of JNI crossing, stats reads, and piece position reads.
   - Performance report `docs/perf/phase1.md`.
 
+- **Phase 2 (swerve drivetrain):**
+  - DC motor model with WPILib `DCMotor` constants and presets (Kraken X60/X44 ± FOC, Falcon 500 ± FOC,
+    NEO, NEO Vortex): implicit back-EMF, stator/supply current limits with effective-voltage supply
+    current, brake/coast, overshoot-free friction.
+  - Battery with internal resistance and brownout hysteresis (outputs disabled during brownout).
+  - Tire model: static→kinetic friction curve, friction circle, ground material factor.
+  - `SwerveVehicleController` on Jolt's vehicle constraint (ADR-0003): steer dynamics with contact
+    scrub, drive motors, implicit tire solve; suspension-derived normal forces give load transfer.
+  - Swerve robot chassis (bumper box, center-of-mass height, box inertia), wheel probes that only hit
+    field geometry, continuous yaw, drive encoders that drift with wheel slip.
+  - Validation suite: rest/weight support, free speed, μg traction limit, load transfer, current-limited
+    acceleration, rotate in place, steer tracking, pushing match, odometry drift, brownout, randomized
+    15 s driving at 1/5/10 substeps.
+  - C ABI: motor presets, swerve config structs, `frcsim_robot_add_swerve`, shared-memory robot I/O.
+  - Java: `Robots`, `SwerveRobot` (zero-copy I/O view), `SwerveDriveConfig`, `SwerveModuleConfig`,
+    `DcMotorSpec`, `NeutralMode`.
+  - Sensor models (off by default, seeded): gyro yaw noise, drift, and scale error reported as a separate
+    measured `gyro_yaw` next to ground-truth yaw; drive encoder quantization.
+  - Benchmark scenarios `swerve_2_360` and `swerve_6_504`.
+  - `frcsim-wpilib` module: `WpilibMotors.fromDCMotor`, `SimSwerveDrive` (Pose2d/Pose3d,
+    ChassisSpeeds, SwerveModuleState/Position from simulated encoders, gyro yaw), `SimulationGuard`.
+    Shipped in the vendordep alongside `frcsim-java`.
+  - Docs: ADR-0003, `docs/models/swerve.md`, `docs/guides/swerve-quickstart.md`.
+- `fields/test-flat`: wall collision boxes are 50 cm thick (extending outward) so pieces pinned by robots
+  can't squeeze through.
+
 ### Changed
 - Java `WorldConfig` is now built with `WorldConfig.builder()` (was a record with `with*` methods).
 - Java `SimWorld.timeSeconds()` reads shared memory instead of calling into native code.

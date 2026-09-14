@@ -98,6 +98,25 @@ std::uint32_t addRobotStandIn(World& world, float x, float y) {
     return world.driven().addBox(desc);
 }
 
+/// A default 60 kg MK4i L2 swerve robot (docs/models/swerve.md) with bumper material.
+std::uint32_t addSwerveRobot(World& world, float x, float y, float yaw) {
+    SwerveDriveConfig config = makeRectangularSwerve(0.55f, 0.55f);
+    config.bumperMaterial = world.materials().require("bumper");
+    return world.robots().addSwerve(config, x, y, yaw);
+}
+
+/// Holds modules straight (a gentle P loop that is stable at the 50 Hz bench control rate) and drives
+/// back and forth with a smooth voltage profile.
+void driveSwerveBackAndForth(World& world, std::uint32_t index, float t, float phase) {
+    constexpr float kSteerKp = 2.0f;
+    SwerveRobot& robot = world.robots().swerve(index);
+    const float driveVolts = 10.0f * std::sin(0.85f * t + phase);
+    for (std::size_t m = 0; m < robot.moduleCount(); ++m) {
+        const auto error = static_cast<float>(std::remainder(-robot.module(m).steerAngle, 6.283185307179586));
+        robot.setModuleVoltages(m, driveVolts, std::clamp(kSteerKp * error, -12.0f, 12.0f));
+    }
+}
+
 /// Drives a stand-in along x(t) = center + amplitude * sin(omega * t) at fixed y.
 void followSine(World& world, std::uint32_t robot, float t, float center, float amplitude, float omega, float y) {
     constexpr float kP = 3.0f; // position correction gain, 1/s
@@ -137,6 +156,36 @@ std::vector<Scenario> scenarios() {
                  const float t = static_cast<float>(period) * kPeriod;
                  followSine(world, a, t, 8.1f, 3.5f, 0.85f, 3.3f);
                  followSine(world, b, t, 8.1f, -3.5f, 0.85f, 4.6f);
+             });
+         }},
+        {"swerve_2_360", "360 packed fuel + 2 full swerve robots (motors, tires, battery) driving through them",
+         0.0, 25,
+         [](World& world) {
+             loadTestField(world);
+             spawnFuelGrid(world, 20, 18, 6.5f, 2.6f, 0.16f);
+             const std::uint32_t a = addSwerveRobot(world, 4.5f, 3.3f, 0.0f);
+             const std::uint32_t b = addSwerveRobot(world, 11.7f, 4.6f, 3.14159265f);
+             return std::function<void(int)>([&world, a, b](int period) {
+                 const float t = static_cast<float>(period) * kPeriod;
+                 driveSwerveBackAndForth(world, a, t, 0.0f);
+                 driveSwerveBackAndForth(world, b, t, 0.0f);
+             });
+         }},
+        {"swerve_6_504", "504 packed fuel + 6 swerve robots driving through them (stress)", 0.0, 25,
+         [](World& world) {
+             loadTestField(world);
+             spawnFuelGrid(world, 24, 21, 6.2f, 2.4f, 0.16f);
+             std::vector<std::uint32_t> robots;
+             for (int i = 0; i < 3; ++i) {
+                 const float y = 2.0f + 2.0f * static_cast<float>(i);
+                 robots.push_back(addSwerveRobot(world, 4.0f, y, 0.0f));
+                 robots.push_back(addSwerveRobot(world, 12.6f, y + 0.8f, 3.14159265f));
+             }
+             return std::function<void(int)>([&world, robots](int period) {
+                 const float t = static_cast<float>(period) * kPeriod;
+                 for (std::size_t i = 0; i < robots.size(); ++i) {
+                     driveSwerveBackAndForth(world, robots[i], t, 0.3f * static_cast<float>(i));
+                 }
              });
          }},
         {"full_504_plow", "504 packed fuel + 2 traction-limited robot stand-ins (stress, no budget)", 0.0, 25,

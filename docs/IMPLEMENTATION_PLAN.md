@@ -56,6 +56,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(!)` blocked or needs 
 | D23 | `WorldConfig` (Java) is an immutable class with a **builder** instead of a record | 13 settings and growing; a builder keeps call sites readable and allows adding fields without breaking callers. |
 | D24 | Default **`workerThreads = 2`** (supersedes D9's single-threaded default) | Measured on i7-10610U: dense 360-piece pile 2.77 ms single-threaded vs 1.45 ms with 2 workers; 3–4 workers are slower. Jolt's deterministic mode gives the same results for any thread count. Idle cost rises from 0.03 to 0.10 ms, well within budget. |
 | D25 | Solver iterations stay at Jolt defaults (10 velocity / 2 position) | Sweeping 4–10 / 1–2 changed dense-pile timing by < 5%: collision detection dominates, so fewer iterations buy nothing. |
+| D26 | Swerve drivetrain = custom Jolt `VehicleController` | See [ADR-0003](adr/0003-swerve-tire-solver.md): implicit tire solve inside Jolt's constraint iterations, per-wheel steer, suspension-derived normal forces. |
+| D27 | Wheel probes use a query-only `kWheelProbe` layer that hits **static geometry only** | Wheels roll on carpet, bumps, and ramps; bumpers (not wheels) push pieces and robots. |
+| D28 | Current-limited motors report the **effective** applied voltage `I·R + back-EMF`, and supply current follows it | Reporting the commanded voltage overstated battery draw about 4.5× at stall and caused false brownouts, which the traction validation test caught. |
+| D29 | Java robot configs (`SwerveDriveConfig`, `SwerveModuleConfig`) are **Phoenix 6-style mutable config objects** with public fields, validated natively on `addSwerve` | 40+ parameters per module; FRC teams already use this pattern with CTRE configs; native validation gives one source of truth for ranges. Supersedes CLAUDE.md §8's "builders for configs" for robot configs. |
+| D30 | Robot inputs and outputs are one **shared-memory I/O block per robot** (`frcsim_swerve_robot_io`, 600 bytes, layout checked natively and from Java) | Setting 8 module voltages and reading pose, encoders, currents, and battery state costs zero JNI calls per period. |
 
 ---
 
@@ -123,20 +128,35 @@ plus friction-limited impulses fit the design.
 
 | ID | Task | Key files | Verification |
 |---|---|---|---|
-| [ ] P2.1 | Spike: read `Wheel.cpp` / `WheeledVehicleController.cpp` for the longitudinal velocity target and wheel spin integration; prototype a 4-wheel swerve on flat ground, Z-up (`VehicleConstraintSettings::mUp/mForward`), cylinder-cast collision tester | `drive/swerve_vehicle_controller.*` | ADR-0003 written with findings |
-| [ ] P2.2 | `DcMotor`: derive R, Kv, Kt from (nominal V, stall torque, stall current, free current, free speed); stator/supply current limits; brake/coast | `drive/dc_motor.*` | stall current, free speed, limit tests |
-| [ ] P2.3 | `Battery` / electrical bus per robot (sag, brownout flag) | `drive/battery.*` | sag formula test |
-| [ ] P2.4 | `SwerveModule`: drive/steer gearing, J_eff with reflected rotor inertia, efficiency, float64 encoders | `drive/swerve_module.*` | encoder integration test |
-| [ ] P2.5 | Tire model: `μ(s) = μ_peak·tanh(|s|/s₀)` with combined friction circle → impulse bounds per substep | `drive/tire_model.*` | traction-limited acceleration ≈ μg |
-| [ ] P2.6 | Steer dynamics + scrub torque | `drive/swerve_module.*` | steer step response tests |
-| [ ] P2.7 | Chassis body: compound shape (bumpers + frame), mass/CoG/inertia overrides, bumper material | `drive/chassis.*` | mass properties test |
-| [ ] P2.8 | Robot C ABI + buffers (inputs: voltages; outputs: rotor pos/vel, currents, module angles, pose, twist, gyro) | `capi/robot.*` | C ABI tests |
-| [ ] P2.9 | Sensors: gyro (yaw/pitch/roll + rates), optional seeded noise and drift | `sensors/*` | noise-off exactness test |
-| [ ] P2.10 | Validation suite (free speed, μg accel limit, pushing match, stall current, rotate in place) + 10k-step NaN fuzz, 1–10 substeps | `tests/drive/*` | all pass |
-| [ ] P2.11 | Java: `SwerveConfig`/`ModuleConfig` records, `SwerveRobot`; new `frcsim-wpilib` module (DCMotor, Pose2d/3d, SwerveModuleState adapters; `RobotBase.isReal()` guard) | `java/frcsim-wpilib/**` | JUnit |
-| [ ] P2.12 | Docs: swerve model (equations + parameter guide), quickstart, CTRE/REV integration recipes | `docs/models/swerve.md`, `docs/guides/*` | reviewed |
+| [x] P2.1 | Spike: read `Wheel.cpp` / `WheeledVehicleController.cpp` for the longitudinal velocity target and wheel spin integration; prototype a 4-wheel swerve on flat ground, Z-up (`VehicleConstraintSettings::mUp/mForward`), cylinder-cast collision tester | `drive/swerve_vehicle_controller.*` | ADR-0003 written with findings |
+| [x] P2.2 | `DcMotor`: derive R, Kv, Kt from (nominal V, stall torque, stall current, free current, free speed); stator/supply current limits; brake/coast | `drive/dc_motor.*` | stall current, free speed, limit tests |
+| [x] P2.3 | `Battery` / electrical bus per robot (sag, brownout flag) | `drive/battery.*` | sag formula test |
+| [x] P2.4 | `SwerveModule`: drive/steer gearing, J_eff with reflected rotor inertia, efficiency, float64 encoders | `drive/swerve_module.*` | encoder integration test |
+| [x] P2.5 | Tire model: `μ(s) = μ_peak·tanh(|s|/s₀)` with combined friction circle → impulse bounds per substep | `drive/tire_model.*` | traction-limited acceleration ≈ μg |
+| [x] P2.6 | Steer dynamics + scrub torque | `drive/swerve_module.*` | steer step response tests |
+| [x] P2.7 | Chassis body: compound shape (bumpers + frame), mass/CoG/inertia overrides, bumper material | `drive/chassis.*` | mass properties test |
+| [x] P2.8 | Robot C ABI + buffers (inputs: voltages; outputs: rotor pos/vel, currents, module angles, pose, twist, gyro) | `capi/robot.*` | C ABI tests |
+| [x] P2.9 | Sensors: gyro (yaw/pitch/roll + rates), optional seeded noise and drift | `sensors/*` | noise-off exactness test |
+| [x] P2.10 | Validation suite (free speed, μg accel limit, pushing match, stall current, rotate in place) + 10k-step NaN fuzz, 1–10 substeps | `tests/drive/*` | all pass |
+| [x] P2.11 | Java: `SwerveConfig`/`ModuleConfig` records, `SwerveRobot`; new `frcsim-wpilib` module (DCMotor, Pose2d/3d, SwerveModuleState adapters; `RobotBase.isReal()` guard) | `java/frcsim-wpilib/**` | JUnit |
+| [~] P2.12 | Docs: swerve model (equations + parameter guide), quickstart, CTRE/REV integration recipes | `docs/models/swerve.md`, `docs/guides/*` | reviewed |
 
 **Gate:** validation suite green; bench scenario with 2 robots + 360 awake pieces within budget.
+
+**Gate status (2026-09-14):**
+- ✅ Validation suite green: 23 swerve/motor tests, including a 15 s randomized driving fuzz at 1/5/10 substeps.
+  92 native tests total.
+- ✅ C ABI + JNI + Java `SwerveRobot` tests green; stock WPILib smoke robot green.
+- ⏳ Performance: `swerve_2_360` ≈ 2.8 ms p50 measured on a power-throttled CPU (801 MHz). Re-measure at
+  full clock speed ([perf/phase1.md](perf/phase1.md)).
+- ✅ P2.9 sensors: gyro noise/drift/scale error and encoder quantization (seeded), exposed as `gyro_yaw` (I/O
+  block grew to 608 bytes; still ABI 1 per D21).
+- ✅ `frcsim-wpilib` verified end to end: the stock WPILib smoke robot drives a swerve robot through
+  `SimSwerveDrive` + `WpilibMotors` via the vendordep.
+- ✅ P2.11 `frcsim-wpilib` unit tests green (WPILib third-party runtime jars pinned to GradleRIO's versions).
+- Test totals: 97 native, 25 Java, 3 smoke robot.
+- Remaining: P2.12 (verify the CTRE/REV recipes in `docs/guides/swerve-quickstart.md` against the vendor
+  libraries) and the full-clock-speed performance re-measurement.
 
 ---
 

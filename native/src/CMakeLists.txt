@@ -2,6 +2,11 @@ configure_file(frcsim_version.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/frcsim
 
 # ---- frcsim_core: all simulation code, static, internal ---------------------------------------------
 add_library(frcsim_core STATIC
+    drive/battery.cpp
+    drive/dc_motor.cpp
+    drive/swerve_config.cpp
+    drive/swerve_controller.cpp
+    drive/swerve_robot.cpp
     field/field.cpp
     field/field_json.cpp
     pieces/piece_pool.cpp

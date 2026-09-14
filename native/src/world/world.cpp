@@ -95,6 +95,7 @@ World::World(const WorldConfig& config)
     m_pieces = std::make_unique<PiecePool>(*m_physics, m_pieceTypes, m_materials, config.maxPieces);
     m_kinematics = std::make_unique<KinematicBodies>(*m_physics, m_materials);
     m_driven = std::make_unique<DrivenBodies>(*m_physics, m_materials);
+    m_robots = std::make_unique<Robots>(*m_physics, m_materials);
 }
 
 World::~World() = default;
@@ -124,6 +125,7 @@ void World::step(double dt, int substeps) {
         ++m_stats.substepCount;
     }
     m_pieces->postStep(m_field->bounds());
+    m_robots->postStep(dt);
 
     m_stats.timeSeconds += dt;
     m_stats.activeBodies = m_physics->GetNumActiveBodies(JPH::EBodyType::RigidBody);

@@ -5,6 +5,9 @@ find_package(Threads REQUIRED)
 # alloc_counter.cpp replaces global operator new for the whole executable (zero-allocation tests).
 add_executable(frcsim_core_tests
     core/alloc_counter.cpp
+    core/drive/test_dc_motor.cpp
+    core/drive/test_swerve_drive.cpp
+    core/drive/test_swerve_sensors.cpp
     core/test_allocations.cpp
     core/test_body_tag.cpp
     core/test_driven_bodies.cpp
@@ -25,6 +28,7 @@ gtest_discover_tests(frcsim_core_tests DISCOVERY_MODE PRE_TEST)
 # C ABI tests: link only the shared library, exactly what bindings see.
 add_executable(frcsim_capi_tests
     capi/test_capi.cpp
+    capi/test_capi_robot.cpp
     capi/test_capi_world.cpp
 )
 target_compile_definitions(frcsim_capi_tests PRIVATE FRCSIM_REPO_DIR="${PROJECT_SOURCE_DIR}/..")

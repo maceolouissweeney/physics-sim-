@@ -235,6 +235,139 @@ typedef struct frcsim_piece_buffers {
 FRCSIM_API frcsim_status frcsim_pieces_get_buffers(frcsim_world* world, frcsim_piece_buffers* out_buffers);
 
 /* ==================================================================================================== */
+/* Robots: swerve drive (docs/models/swerve.md)                                                         */
+/* ==================================================================================================== */
+
+/** DC motor parameters in WPILib DCMotor form (per motor; `count` motors share one gearbox). */
+typedef struct frcsim_motor_params {
+    float nominal_voltage; /**< V */
+    float stall_torque;    /**< N*m */
+    float stall_current;   /**< A */
+    float free_current;    /**< A */
+    float free_speed;      /**< rad/s */
+    int32_t count;
+    float rotor_inertia;   /**< kg*m^2 per motor */
+} frcsim_motor_params;
+
+typedef enum frcsim_motor_preset {
+    FRCSIM_MOTOR_KRAKEN_X60 = 0,
+    FRCSIM_MOTOR_KRAKEN_X60_FOC = 1,
+    FRCSIM_MOTOR_KRAKEN_X44 = 2,
+    FRCSIM_MOTOR_KRAKEN_X44_FOC = 3,
+    FRCSIM_MOTOR_FALCON_500 = 4,
+    FRCSIM_MOTOR_FALCON_500_FOC = 5,
+    FRCSIM_MOTOR_NEO = 6,
+    FRCSIM_MOTOR_NEO_VORTEX = 7
+} frcsim_motor_preset;
+
+/** Fill motor parameters from a preset (WPILib 2026 constants). */
+FRCSIM_API frcsim_status frcsim_motor_params_preset(int32_t preset, int32_t count, frcsim_motor_params* out_params);
+
+typedef enum frcsim_neutral_mode { FRCSIM_NEUTRAL_BRAKE = 0, FRCSIM_NEUTRAL_COAST = 1 } frcsim_neutral_mode;
+
+typedef struct frcsim_swerve_module_config {
+    float x, y;                   /**< module center in the robot frame (m), +X forward, +Y left */
+    float wheel_radius;           /**< m */
+    float wheel_width;            /**< m */
+    float wheel_inertia;          /**< kg*m^2, excluding rotor */
+    frcsim_motor_params drive_motor;
+    float drive_gear_ratio;       /**< motor rotations per wheel rotation */
+    float drive_efficiency;
+    float drive_friction_torque;  /**< N*m at the wheel */
+    float drive_stator_current_limit; /**< A, 0 = none */
+    float drive_supply_current_limit; /**< A, 0 = none */
+    int32_t drive_neutral_mode;   /**< frcsim_neutral_mode */
+    frcsim_motor_params steer_motor;
+    float steer_gear_ratio;       /**< motor rotations per module rotation */
+    float steer_efficiency;
+    float steer_inertia;          /**< kg*m^2 module about steer axis, excluding rotor */
+    float steer_friction_torque;  /**< N*m at the module */
+    float steer_stator_current_limit;
+    float steer_supply_current_limit;
+    int32_t steer_neutral_mode;
+    float tire_static_friction;
+    float tire_kinetic_friction;
+    float tire_transition_slip_speed; /**< m/s */
+    float scrub_radius;           /**< m */
+} frcsim_swerve_module_config;
+
+#define FRCSIM_MAX_SWERVE_MODULES 8
+
+typedef struct frcsim_swerve_config {
+    uint32_t struct_size;         /**< set by frcsim_swerve_config_init */
+    float mass;                   /**< kg including bumpers and battery */
+    float frame_half_x, frame_half_y; /**< m, half bumper-to-bumper size */
+    float bumper_bottom;          /**< m above carpet */
+    float bumper_height;          /**< m */
+    float com_x, com_y, com_height;
+    float yaw_inertia;            /**< kg*m^2, 0 = uniform box */
+    frcsim_material_id bumper_material;
+    float suspension_travel, suspension_frequency, suspension_damping_ratio;
+    float battery_open_circuit_voltage, battery_internal_resistance;
+    float battery_brownout_voltage, battery_brownout_recovery_voltage;
+    uint32_t module_count;
+    frcsim_swerve_module_config modules[FRCSIM_MAX_SWERVE_MODULES];
+    /* Sensor imperfections (0 = ideal). Noise is seeded and deterministic per platform. */
+    float gyro_yaw_noise;                  /**< rad, std-dev of white noise on gyro_yaw */
+    float gyro_yaw_drift_rate;             /**< rad/s since the last pose reset */
+    float gyro_scale_error;                /**< fractional, e.g. 0.005 */
+    uint32_t drive_encoder_counts_per_rev; /**< quantizes drive_rotor_position; 0 = continuous */
+    uint32_t sensor_seed;
+} frcsim_swerve_config;
+
+/**
+ * Defaults: 60 kg robot, four SDS MK4i L2 modules with Kraken X60 drive and steer at
+ * (+-wheel_base/2, +-track_width/2), ordered front-left, front-right, back-left, back-right.
+ */
+FRCSIM_API void frcsim_swerve_config_init(frcsim_swerve_config* config, float track_width, float wheel_base);
+
+/**
+ * Shared-memory I/O for one swerve module. Inputs are read at the start of every frcsim_world_step();
+ * outputs are written at the end of it. Layout is ABI.
+ */
+typedef struct frcsim_swerve_module_io {
+    /* inputs */
+    float drive_voltage;          /* offset  0 */
+    float steer_voltage;          /* offset  4 */
+    /* outputs */
+    double drive_rotor_position;  /* offset  8: rad, motor side (wheel angle * gear ratio), encoder-quantized */
+    double steer_angle;           /* offset 16: rad, continuous module angle */
+    float drive_rotor_velocity;   /* offset 24: rad/s, motor side */
+    float steer_velocity;         /* offset 28: rad/s, module */
+    float drive_applied_voltage;  /* offset 32 */
+    float drive_stator_current;   /* offset 36 */
+    float drive_supply_current;   /* offset 40 */
+    float steer_applied_voltage;  /* offset 44 */
+    float steer_stator_current;   /* offset 48 */
+    float steer_supply_current;   /* offset 52 */
+    float normal_force;           /* offset 56: N */
+    float slip_speed;             /* offset 60: m/s */
+} frcsim_swerve_module_io;        /* size 64 */
+
+typedef struct frcsim_swerve_robot_io {
+    double x, y, z;               /* offsets 0, 8, 16: robot origin, field frame (m) */
+    double yaw;                   /* offset 24: rad, continuous, true (ground truth) */
+    float qx, qy, qz, qw;         /* offsets 32..44: orientation */
+    float vx, vy, vz;             /* offsets 48..56: center-of-mass velocity, field frame */
+    float wx, wy, wz;             /* offsets 60..68: angular velocity, field frame */
+    float battery_voltage;        /* offset 72 */
+    float battery_current;        /* offset 76 */
+    uint32_t brownout;            /* offset 80: 1 while outputs are disabled */
+    uint32_t module_count;        /* offset 84 */
+    frcsim_swerve_module_io modules[FRCSIM_MAX_SWERVE_MODULES]; /* offset 88 */
+    double gyro_yaw;              /* offset 600: rad, measured (yaw with scale error, drift, noise) */
+} frcsim_swerve_robot_io;         /* size 608 */
+
+FRCSIM_API frcsim_status frcsim_robot_add_swerve(frcsim_world* world, const frcsim_swerve_config* config, float x,
+                                                float y, float yaw, uint32_t* out_robot);
+
+/** Place a robot on the carpet at rest. */
+FRCSIM_API frcsim_status frcsim_robot_reset_pose(frcsim_world* world, uint32_t robot, float x, float y, float yaw);
+
+/** Shared I/O block for a robot (NULL if world or index is invalid). Valid until the world is destroyed. */
+FRCSIM_API frcsim_swerve_robot_io* frcsim_robot_io(frcsim_world* world, uint32_t robot);
+
+/* ==================================================================================================== */
 /* Kinematic bodies (scripted movers: test obstacles, benchmark plows)                                  */
 /* ==================================================================================================== */
 

@@ -1,6 +1,7 @@
 # frcsim — High-Performance FRC Physics Simulation
 
-> Working name `frcsim`. Status: **Phases 0–1 complete (verified on Windows); Phase 2 (swerve) next.**
+> Working name `frcsim`. Status: **Phases 0–1 complete; Phase 2 (swerve) implemented and tested on Windows (perf re-measurement and
+> CTRE/REV recipe verification pending); Phase 3 (field elements, REBUILT arena) next.**
 > This file is the source of truth for architecture, research, and conventions. Update it when a
 > decision changes. Task-level progress, pinned versions, and the decision log live in
 > [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md); build setup lives in
@@ -130,17 +131,17 @@ physics-sim/
 │   │   ├── util/         # errors, lock-free EventBuffer
 │   │   ├── capi/         # C ABI implementation (noexcept, status codes, thread-local last error)
 │   │   ├── jni/          # JNI glue → C ABI only
-│   │   ├── drive/        # (planned) DcMotor, Battery, SwerveModule, TireModel, SwerveVehicleController
+│   │   ├── drive/        # DcMotor, Battery, tire model, SwerveDriveConfig, SwerveVehicleController, SwerveRobot/Robots
 │   │   ├── mechanisms/   # (planned) intake zones, indexer, flywheel shooter, aero
 │   │   └── sensors/      # (planned) gyro, encoders
 │   ├── tests/            # GoogleTest: core/ (links static core, replaces operator new), capi/ (shared lib only)
 │   ├── bench/            # frcsim_bench scenario runner (-DFRCSIM_BUILD_BENCH=ON)
 │   └── out/              # `cmake --install` output: <os>/<arch>/shared/ (git-ignored)
 ├── java/                           # Gradle 8.11 multi-project (wrapper)
-│   ├── frcsim-core/      # org.frcsim: FrcSim, SimWorld, WorldConfig; org.frcsim.jni: NativeLoader, FrcSimJNI
+│   ├── frcsim-core/      # org.frcsim: SimWorld, WorldConfig, Field, GamePieces, Robots/SwerveRobot, configs; org.frcsim.jni
 │   ├── frcsim-native/    # packages native/out into WPILib JNI zips, generates the vendordep
 │   ├── frcsim-jmh/       # JMH benchmarks of the binding (not published)
-│   ├── frcsim-wpilib/    # (planned) WPILib adapters + telemetry
+│   ├── frcsim-wpilib/    # WpilibMotors, SimSwerveDrive (Pose/ChassisSpeeds/module states), SimulationGuard; (planned) telemetry
 │   └── frcsim-games/     # (planned) season arenas (Rebuilt2026, ...)
 ├── vendordep/frcsim.json.in        # vendordep template (version, group, mavenUrl substituted)
 ├── examples/smoke-robot/           # stock WPILib 2026 project; end-to-end vendordep test
@@ -185,22 +186,24 @@ physics-sim/
    ring buffer (scores, intakes).
 5. **Java** reads buffers (no allocation) → feeds WPILib/CTRE/REV sim states and telemetry.
 
-### API sketch (Java, illustrative)
+### Java API (current; shooter and intake are Phase 4)
 ```java
-var world = SimWorld.create(Rebuilt2026.arena());           // AutoCloseable; throws if RobotBase.isReal()
-var robot = world.addSwerveRobot(SwerveConfig.builder()
-    .mass(Kilograms.of(60)).moi(6.0).bumperSize(0.9, 0.9)
-    .modules(ModuleConfig.mk4i(L2).driveMotor(DCMotor.getKrakenX60Foc(1)).steerMotor(...))
-    .wheelCof(1.2).build(), startPose);
-var shooter = robot.addFlywheelShooter(ShooterConfig...);
-var intake  = robot.addIntakeZone(IntakeConfig.overBumper(...));
+SimulationGuard.requireSimulation();                          // frcsim-wpilib
+var world = SimWorld.create();                                // AutoCloseable; 2 physics workers by default
+world.field().loadJson(Path.of("fields/test-flat/field.json"));
+
+var module = new SwerveModuleConfig();                        // Phoenix-style config objects (D29)
+module.driveMotor = WpilibMotors.fromDCMotor(DCMotor.getKrakenX60Foc(1), 6.0e-5);
+var config = SwerveDriveConfig.rectangular(0.55, 0.55, module);
+var drive = SimSwerveDrive.create(world, config, new Pose2d(2, 4, Rotation2d.kZero));
 
 // simulationPeriodic():
-robot.module(i).setDriveVoltage(v); robot.module(i).setSteerVoltage(v);
-world.step(0.020);
-talonSimState.setRawRotorPosition(robot.module(i).driveRotorRotations());
-piecePublisher.set(world.pieces().positionsAsTranslation3d());  // reused array, no alloc
+drive.setModuleVoltages(m, driveVolts, steerVolts);           // shared memory, no JNI
+world.step(0.020);                                            // the one JNI call per period
+talonSimState.setRawRotorPosition(Units.radiansToRotations(drive.getRobot().driveRotorPosition(m)));
+world.pieces().copyPositions(reusedFloatArray);               // zero-copy source, no allocation
 ```
+See [`docs/guides/swerve-quickstart.md`](docs/guides/swerve-quickstart.md).
 
 ### C ABI shape (illustrative)
 ```c
@@ -448,7 +451,8 @@ scenario.
 ### Java
 - `frcsim-core` must never import `edu.wpi.first.*` / `org.wpilib.*`.
 - `SimWorld.create()` throws on a real robot (`RobotBase.isReal()` check lives in `frcsim-wpilib`).
-- Builders for configs; configs immutable; runtime objects `AutoCloseable`.
+- `WorldConfig` is an immutable builder (D23); robot configs are Phoenix-style mutable objects validated
+  natively at creation (D29); runtime objects are `AutoCloseable`.
 - No allocation in methods documented as "periodic-safe".
 
 ### JNI

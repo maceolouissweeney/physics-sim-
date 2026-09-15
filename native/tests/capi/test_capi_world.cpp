@@ -84,7 +84,7 @@ TEST(CApiWorld, FieldJsonSpawnStepAndReadBuffers) {
     for (int i = 0; i < 100; ++i) {
         ASSERT_EQ(frcsim_world_step(world.get(), 0.02, 5), FRCSIM_OK);
     }
-    EXPECT_NEAR(buffers.positions_xyz[3 * 1 + 2], 0.075f, 0.005f);
+    EXPECT_NEAR(buffers.positions_xyz_meters[3 * 1 + 2], 0.075f, 0.005f);
     EXPECT_EQ(buffers.states[1], FRCSIM_PIECE_ON_FIELD);
     EXPECT_EQ(frcsim_world_stats_ptr(world.get())->pieces_simulated, 3u);
 
@@ -104,8 +104,8 @@ TEST(CApiWorld, PieceTypeDescriptorAndErrors) {
     frcsim_piece_type_desc_init(&desc);
     desc.name = "cube";
     desc.shape = FRCSIM_PIECE_SHAPE_BOX;
-    desc.half_extents[0] = desc.half_extents[1] = desc.half_extents[2] = 0.12f;
-    desc.mass = 0.3f;
+    desc.half_extents_meters[0] = desc.half_extents_meters[1] = desc.half_extents_meters[2] = 0.12f;
+    desc.mass_kg = 0.3f;
     frcsim_piece_type_id cube = 0;
     ASSERT_EQ(frcsim_piece_type_add(world.get(), &desc, &cube), FRCSIM_OK) << frcsim_last_error();
     EXPECT_EQ(frcsim_piece_type_add(world.get(), &desc, &cube), FRCSIM_ERR_INVALID_ARGUMENT) << "duplicate";
@@ -144,8 +144,8 @@ TEST(CApiWorld, FieldPrimitivesAndKinematicPlow) {
     frcsim_piece_type_desc desc;
     frcsim_piece_type_desc_init(&desc);
     desc.name = "ball";
-    desc.radius = 0.075f;
-    desc.mass = 0.215f;
+    desc.radius_meters = 0.075f;
+    desc.mass_kg = 0.215f;
     frcsim_piece_type_id ball = 0;
     ASSERT_EQ(frcsim_piece_type_add(world.get(), &desc, &ball), FRCSIM_OK);
     const float at[] = {1.0f, 0, 0.075f};
@@ -162,7 +162,7 @@ TEST(CApiWorld, FieldPrimitivesAndKinematicPlow) {
     }
     frcsim_piece_buffers buffers{};
     ASSERT_EQ(frcsim_pieces_get_buffers(world.get(), &buffers), FRCSIM_OK);
-    EXPECT_GT(buffers.positions_xyz[0], 1.5f + 0.45f) << "plow should push the ball ahead of it";
+    EXPECT_GT(buffers.positions_xyz_meters[0], 1.5f + 0.45f) << "plow should push the ball ahead of it";
 
     EXPECT_EQ(frcsim_kinematic_move_to(world.get(), 5, plowCenter, nullptr, 0.02), FRCSIM_ERR_NOT_FOUND);
 }

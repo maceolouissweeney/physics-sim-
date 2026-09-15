@@ -17,8 +17,8 @@ namespace {
 constexpr double kTwoPi = 6.283185307179586;
 
 /// Wraps to [-pi, pi], the range Jolt expects for Wheel::SetSteerAngle.
-float wrapAngle(double angle) {
-    return static_cast<float>(std::remainder(angle, kTwoPi));
+float wrapAngleRadians(double angleRadians) {
+    return static_cast<float>(std::remainder(angleRadians, kTwoPi));
 }
 
 } // namespace
@@ -49,14 +49,15 @@ JPH::Wheel* SwerveVehicleController::ConstructWheel(const JPH::WheelSettings& se
     return new JPH::Wheel(settings);
 }
 
-float SwerveVehicleController::driveInertia(std::size_t i) const {
+float SwerveVehicleController::driveInertiaKgMetersSq(std::size_t i) const {
     const SwerveModuleConfig& cfg = m_config.modules[i];
-    return cfg.wheelInertia + cfg.driveGearRatio * cfg.driveGearRatio * m_state.driveMotors[i].rotorInertia;
+    return cfg.wheelInertiaKgMetersSq +
+           cfg.driveGearRatio * cfg.driveGearRatio * m_state.driveMotors[i].rotorInertiaKgMetersSq;
 }
 
-void SwerveVehicleController::PreCollide(float dt, JPH::PhysicsSystem&) {
+void SwerveVehicleController::PreCollide(float dtSeconds, JPH::PhysicsSystem&) {
     const bool brownout = m_state.battery.brownout();
-    const float busVoltage = m_state.battery.voltage();
+    const float busVolts = m_state.battery.voltageVolts();
     JPH::Wheels& wheels = mConstraint.GetWheels();
 
     for (std::size_t i = 0; i < wheels.size(); ++i) {
@@ -65,42 +66,46 @@ void SwerveVehicleController::PreCollide(float dt, JPH::PhysicsSystem&) {
         JPH::Wheel* wheel = wheels[i];
 
         // Encoders integrate the post-solve wheel speed of the previous step.
-        st.wheelVelocity = wheel->GetAngularVelocity();
-        st.wheelAngle += static_cast<double>(st.wheelVelocity) * m_previousDt;
+        st.wheelVelocityRadPerSec = wheel->GetAngularVelocity();
+        st.wheelAngleRadians += static_cast<double>(st.wheelVelocityRadPerSec) * m_previousDtSeconds;
 
         // Normal force from last step's suspension impulse.
         st.hasContact = wheel->HasContact();
-        st.normalForce = st.hasContact && m_previousDt > 0.0f
-                             ? std::max(0.0f, wheel->GetSuspensionLambda() / m_previousDt)
-                             : 0.0f;
+        st.normalForceNewtons = st.hasContact && m_previousDtSeconds > 0.0f
+                                    ? std::max(0.0f, wheel->GetSuspensionLambda() / m_previousDtSeconds)
+                                    : 0.0f;
 
         // Steer axis: motor + gearbox + module inertia; scrub resists turning a loaded wheel.
         const DcMotorConstants& motor = m_state.steerMotors[i];
-        const float inertia = cfg.steerInertia + cfg.steerGearRatio * cfg.steerGearRatio * motor.rotorInertia;
-        const float scrub = cfg.tire.staticFriction * st.normalForce * cfg.scrubRadius * st.groundFriction;
+        const float inertiaKgMetersSq =
+            cfg.steerInertiaKgMetersSq + cfg.steerGearRatio * cfg.steerGearRatio * motor.rotorInertiaKgMetersSq;
+        const float scrubTorqueNewtonMeters =
+            cfg.tire.staticFriction * st.normalForceNewtons * cfg.scrubRadiusMeters * st.groundFriction;
         const MotorStepResult r = stepGearedMotor(
-            motor, GearboxParams{cfg.steerGearRatio, cfg.steerEfficiency, cfg.steerFrictionTorque + scrub}, inertia,
-            st.steerVelocity, brownout ? 0.0f : st.steerVoltageCommand, busVoltage,
-            brownout ? NeutralMode::Coast : cfg.steerNeutralMode, cfg.steerCurrentLimits, 0.0f, dt);
-        st.steerVelocity = r.velocity;
-        st.steerAngle += static_cast<double>(r.velocity) * dt;
-        st.steerAppliedVoltage = r.appliedVoltage;
-        st.steerStatorCurrent = r.statorCurrent;
-        st.steerSupplyCurrent = r.supplyCurrent;
+            motor,
+            GearboxParams{cfg.steerGearRatio, cfg.steerEfficiency,
+                          cfg.steerFrictionTorqueNewtonMeters + scrubTorqueNewtonMeters},
+            inertiaKgMetersSq, st.steerVelocityRadPerSec, brownout ? 0.0f : st.steerCommandVolts, busVolts,
+            brownout ? NeutralMode::Coast : cfg.steerNeutralMode, cfg.steerCurrentLimits, 0.0f, dtSeconds);
+        st.steerVelocityRadPerSec = r.velocityRadPerSec;
+        st.steerAngleRadians += static_cast<double>(r.velocityRadPerSec) * dtSeconds;
+        st.steerAppliedVolts = r.appliedVolts;
+        st.steerStatorCurrentAmps = r.statorCurrentAmps;
+        st.steerSupplyCurrentAmps = r.supplyCurrentAmps;
 
         // Contact axes for this step are computed from the steer angle right after PreCollide.
-        wheel->SetSteerAngle(wrapAngle(st.steerAngle));
+        wheel->SetSteerAngle(wrapAngleRadians(st.steerAngleRadians));
     }
 }
 
-void SwerveVehicleController::PostCollide(float dt, JPH::PhysicsSystem& physics) {
+void SwerveVehicleController::PostCollide(float dtSeconds, JPH::PhysicsSystem& physics) {
     const bool brownout = m_state.battery.brownout();
-    const float busVoltage = m_state.battery.voltage();
-    const float impulseScale = m_previousDt > 0.0f ? dt / m_previousDt : 0.0f;
+    const float busVolts = m_state.battery.voltageVolts();
+    const float impulseScale = m_previousDtSeconds > 0.0f ? dtSeconds / m_previousDtSeconds : 0.0f;
     const JPH::BodyLockInterfaceNoLock& locks = physics.GetBodyLockInterfaceNoLock();
     JPH::Wheels& wheels = mConstraint.GetWheels();
 
-    float totalSupplyCurrent = 0.0f;
+    float totalSupplyCurrentAmps = 0.0f;
     for (std::size_t i = 0; i < wheels.size(); ++i) {
         const SwerveModuleConfig& cfg = m_config.modules[i];
         SwerveModuleState& st = m_state.modules[i];
@@ -110,9 +115,9 @@ void SwerveVehicleController::PostCollide(float dt, JPH::PhysicsSystem& physics)
         st.groundFriction = 1.0f;
         if (wheel->HasContact()) {
             const JPH::RVec3 contact = wheel->GetContactPosition();
-            st.contactX = static_cast<float>(contact.GetX());
-            st.contactY = static_cast<float>(contact.GetY());
-            st.contactZ = static_cast<float>(contact.GetZ());
+            st.contactXMeters = static_cast<float>(contact.GetX());
+            st.contactYMeters = static_cast<float>(contact.GetY());
+            st.contactZMeters = static_cast<float>(contact.GetZ());
             if (const JPH::Body* ground = locks.TryGetBody(wheel->GetContactBodyID())) {
                 const MaterialId material = BodyTag::decodeMaterial(ground->GetUserData());
                 st.groundFriction = m_materials.combined(material, material).friction;
@@ -120,26 +125,27 @@ void SwerveVehicleController::PostCollide(float dt, JPH::PhysicsSystem& physics)
         }
 
         // Drive motor, stepped implicitly against last step's ground impulse (as Jolt's wheeled controller does).
-        const float radius = cfg.wheelRadius;
-        const float inertia = driveInertia(i);
-        const float groundAngularImpulse =
-            wheel->HasContact() ? -impulseScale * wheel->GetLongitudinalLambda() * radius : 0.0f;
+        const float radiusMeters = cfg.wheelRadiusMeters;
+        const float inertiaKgMetersSq = driveInertiaKgMetersSq(i);
+        const float groundAngularImpulseNewtonMeterSec =
+            wheel->HasContact() ? -impulseScale * wheel->GetLongitudinalLambda() * radiusMeters : 0.0f;
         const MotorStepResult d = stepGearedMotor(
-            m_state.driveMotors[i], GearboxParams{cfg.driveGearRatio, cfg.driveEfficiency, cfg.driveFrictionTorque},
-            inertia, wheel->GetAngularVelocity(), brownout ? 0.0f : st.driveVoltageCommand, busVoltage,
+            m_state.driveMotors[i],
+            GearboxParams{cfg.driveGearRatio, cfg.driveEfficiency, cfg.driveFrictionTorqueNewtonMeters},
+            inertiaKgMetersSq, wheel->GetAngularVelocity(), brownout ? 0.0f : st.driveCommandVolts, busVolts,
             brownout ? NeutralMode::Coast : cfg.driveNeutralMode, cfg.driveCurrentLimits,
-            dt > 0.0f ? groundAngularImpulse / dt : 0.0f, dt);
+            dtSeconds > 0.0f ? groundAngularImpulseNewtonMeterSec / dtSeconds : 0.0f, dtSeconds);
         // Remove the load estimate again: the solver applies the actual ground impulse.
-        wheel->SetAngularVelocity(d.velocity - groundAngularImpulse / inertia);
+        wheel->SetAngularVelocity(d.velocityRadPerSec - groundAngularImpulseNewtonMeterSec / inertiaKgMetersSq);
 
-        st.driveAppliedVoltage = d.appliedVoltage;
-        st.driveStatorCurrent = d.statorCurrent;
-        st.driveSupplyCurrent = d.supplyCurrent;
-        totalSupplyCurrent += d.supplyCurrent + st.steerSupplyCurrent;
+        st.driveAppliedVolts = d.appliedVolts;
+        st.driveStatorCurrentAmps = d.statorCurrentAmps;
+        st.driveSupplyCurrentAmps = d.supplyCurrentAmps;
+        totalSupplyCurrentAmps += d.supplyCurrentAmps + st.steerSupplyCurrentAmps;
     }
 
-    m_state.battery.update(totalSupplyCurrent);
-    m_previousDt = dt;
+    m_state.battery.update(totalSupplyCurrentAmps);
+    m_previousDtSeconds = dtSeconds;
 }
 
 bool SwerveVehicleController::SolveLongitudinalAndLateralConstraints(float) {
@@ -151,38 +157,43 @@ bool SwerveVehicleController::SolveLongitudinalAndLateralConstraints(float) {
         JPH::Wheel* wheel = wheels[i];
         SwerveModuleState& st = m_state.modules[i];
         if (!wheel->HasContact()) {
-            st.slipSpeed = 0.0f;
-            st.longitudinalSlip = 0.0f;
-            st.lateralSlip = 0.0f;
+            st.slipSpeedMetersPerSec = 0.0f;
+            st.longitudinalSlipMetersPerSec = 0.0f;
+            st.lateralSlipMetersPerSec = 0.0f;
             continue;
         }
         const SwerveModuleConfig& cfg = m_config.modules[i];
-        const float radius = cfg.wheelRadius;
-        const float inertia = driveInertia(i);
+        const float radiusMeters = cfg.wheelRadiusMeters;
+        const float inertiaKgMetersSq = driveInertiaKgMetersSq(i);
 
-        const JPH::Vec3 relativeVelocity =
+        const JPH::Vec3 relativeVelocityMetersPerSec =
             chassis->GetPointVelocity(wheel->GetContactPosition()) - wheel->GetContactPointVelocity();
-        const float vLong = relativeVelocity.Dot(wheel->GetContactLongitudinal());
-        const float vLat = relativeVelocity.Dot(wheel->GetContactLateral());
-        const float omega = wheel->GetAngularVelocity();
-        const float longitudinalSlip = omega * radius - vLong;
-        st.longitudinalSlip = longitudinalSlip;
-        st.lateralSlip = vLat;
-        st.slipSpeed = std::sqrt(longitudinalSlip * longitudinalSlip + vLat * vLat);
+        const float longitudinalVelocityMetersPerSec = relativeVelocityMetersPerSec.Dot(wheel->GetContactLongitudinal());
+        const float lateralVelocityMetersPerSec = relativeVelocityMetersPerSec.Dot(wheel->GetContactLateral());
+        const float omegaRadPerSec = wheel->GetAngularVelocity();
+        st.longitudinalSlipMetersPerSec = omegaRadPerSec * radiusMeters - longitudinalVelocityMetersPerSec;
+        st.lateralSlipMetersPerSec = lateralVelocityMetersPerSec;
+        st.slipSpeedMetersPerSec = std::sqrt(st.longitudinalSlipMetersPerSec * st.longitudinalSlipMetersPerSec +
+                                             lateralVelocityMetersPerSec * lateralVelocityMetersPerSec);
 
-        const float mu = tireFriction(cfg.tire, st.slipSpeed) * st.groundFriction;
-        const float maxImpulse = mu * std::max(0.0f, wheel->GetSuspensionLambda());
+        const float frictionCoefficient = tireFriction(cfg.tire, st.slipSpeedMetersPerSec) * st.groundFriction;
+        const float maxImpulseNewtonSec = frictionCoefficient * std::max(0.0f, wheel->GetSuspensionLambda());
 
         // Longitudinal: the impulse that zeroes contact slip through the wheel inertia, clamped by friction.
-        const float previous = wheel->GetLongitudinalLambda();
-        const float target =
-            std::clamp(previous + (omega - vLong / radius) * inertia / radius, -maxImpulse, maxImpulse);
-        appliedImpulse |= wheel->SolveLongitudinalConstraintPart(mConstraint, target, target);
-        wheel->SetAngularVelocity(omega - (wheel->GetLongitudinalLambda() - previous) * radius / inertia);
+        const float previousImpulseNewtonSec = wheel->GetLongitudinalLambda();
+        const float targetImpulseNewtonSec = std::clamp(
+            previousImpulseNewtonSec +
+                (omegaRadPerSec - longitudinalVelocityMetersPerSec / radiusMeters) * inertiaKgMetersSq / radiusMeters,
+            -maxImpulseNewtonSec, maxImpulseNewtonSec);
+        appliedImpulse |= wheel->SolveLongitudinalConstraintPart(mConstraint, targetImpulseNewtonSec, targetImpulseNewtonSec);
+        wheel->SetAngularVelocity(omegaRadPerSec - (wheel->GetLongitudinalLambda() - previousImpulseNewtonSec) *
+                                                       radiusMeters / inertiaKgMetersSq);
 
         // Lateral: whatever the friction circle has left.
-        const float lateralMax = std::sqrt(std::max(0.0f, maxImpulse * maxImpulse - target * target));
-        appliedImpulse |= wheel->SolveLateralConstraintPart(mConstraint, -lateralMax, lateralMax);
+        const float lateralMaxImpulseNewtonSec = std::sqrt(std::max(
+            0.0f, maxImpulseNewtonSec * maxImpulseNewtonSec - targetImpulseNewtonSec * targetImpulseNewtonSec));
+        appliedImpulse |=
+            wheel->SolveLateralConstraintPart(mConstraint, -lateralMaxImpulseNewtonSec, lateralMaxImpulseNewtonSec);
     }
     return appliedImpulse;
 }

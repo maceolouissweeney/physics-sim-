@@ -53,7 +53,7 @@ public class BindingBenchmarks {
   /** Bulk copy of 504 piece positions into a reused float[] (telemetry path). */
   @Benchmark
   public int copy504Positions(PopulatedWorld state) {
-    return state.pieces.copyPositions(state.positions);
+    return state.pieces.copyPositionsMeters(state.positionsMeters);
   }
 
   /** Per-piece accessor loop over 504 pieces. */
@@ -63,7 +63,7 @@ public class BindingBenchmarks {
     double sum = 0.0;
     int n = pieces.count();
     for (int i = 0; i < n; i++) {
-      sum += pieces.x(i) + pieces.y(i) + pieces.z(i);
+      sum += pieces.xMeters(i) + pieces.yMeters(i) + pieces.zMeters(i);
     }
     return sum;
   }
@@ -101,7 +101,7 @@ public class BindingBenchmarks {
   public static class PopulatedWorld {
     SimWorld world;
     GamePieces pieces;
-    final float[] positions = new float[504 * 3];
+    final float[] positionsMeters = new float[504 * 3];
 
     /**
      * Loads the field, spawns 504 fuel, and lets them settle.
@@ -116,13 +116,13 @@ public class BindingBenchmarks {
           .loadJson(
               Path.of(System.getProperty("frcsim.repoDir"), "fields", "test-flat", "field.json"));
       GamePieceType fuel = world.pieces().findType("fuel").orElseThrow();
-      float[] xyz = new float[504 * 3];
+      float[] positionsXyzMeters = new float[504 * 3];
       for (int i = 0; i < 504; i++) {
-        xyz[3 * i] = 5.0f + 0.3f * (i % 24);
-        xyz[3 * i + 1] = 2.0f + 0.3f * (i / 24);
-        xyz[3 * i + 2] = 0.076f;
+        positionsXyzMeters[3 * i] = 5.0f + 0.3f * (i % 24);
+        positionsXyzMeters[3 * i + 1] = 2.0f + 0.3f * (i / 24);
+        positionsXyzMeters[3 * i + 2] = 0.076f;
       }
-      world.pieces().spawn(fuel, xyz);
+      world.pieces().spawn(fuel, positionsXyzMeters);
       for (int i = 0; i < 100; i++) {
         world.step(0.020);
       }

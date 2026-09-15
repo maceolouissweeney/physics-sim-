@@ -31,7 +31,9 @@ frcsim_configure_target(frcsim_core)
 
 # ---- frcsim: shared library exporting the C ABI (+ JNI) ---------------------------------------------
 add_library(frcsim SHARED
-    capi/frcsim_c.cpp
+    capi/capi_pieces.cpp
+    capi/capi_robots.cpp
+    capi/capi_world.cpp
 )
 target_include_directories(frcsim PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_compile_definitions(frcsim PRIVATE FRCSIM_BUILDING_LIBRARY)
@@ -40,7 +42,7 @@ frcsim_configure_target(frcsim)
 
 if(FRCSIM_BUILD_JNI)
     find_package(JNI REQUIRED)
-    target_sources(frcsim PRIVATE jni/frcsim_jni.cpp)
+    target_sources(frcsim PRIVATE jni/jni_pieces.cpp jni/jni_robots.cpp jni/jni_world.cpp)
     target_include_directories(frcsim SYSTEM PRIVATE ${JNI_INCLUDE_DIRS})
 endif()
 

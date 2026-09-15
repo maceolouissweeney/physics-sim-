@@ -13,16 +13,19 @@ class WorldConfigTest {
     assertEquals(2, config.workerThreads());
     assertEquals(5, config.substeps());
     assertEquals(1024, config.maxPieces());
-    assertEquals(WorldConfig.STANDARD_GRAVITY, config.gravity());
-    assertEquals(0.2, config.minVelocityForRestitution());
+    assertEquals(WorldConfig.STANDARD_GRAVITY_METERS_PER_SEC_SQ, config.gravityMetersPerSecSq());
+    assertEquals(0.2, config.minVelocityForRestitutionMetersPerSec());
+    assertEquals(0.5, config.timeBeforeSleepSeconds());
+    assertEquals(0.03, config.sleepVelocityThresholdMetersPerSec());
   }
 
   @Test
   void toBuilderRoundTripsAndModifies() {
     WorldConfig base = WorldConfig.defaults();
-    WorldConfig modified = base.toBuilder().workerThreads(0).gravity(0.0).substeps(10).build();
+    WorldConfig modified =
+        base.toBuilder().workerThreads(0).gravityMetersPerSecSq(0.0).substeps(10).build();
     assertEquals(0, modified.workerThreads());
-    assertEquals(0.0, modified.gravity());
+    assertEquals(0.0, modified.gravityMetersPerSecSq());
     assertEquals(10, modified.substeps());
     assertEquals(base.maxPieces(), modified.maxPieces());
     assertEquals(2, base.workerThreads());
@@ -36,9 +39,12 @@ class WorldConfigTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> WorldConfig.builder().workerThreads(WorldConfig.MAX_WORKER_THREADS + 1).build());
-    assertThrows(IllegalArgumentException.class, () -> WorldConfig.builder().gravity(-1.0).build());
     assertThrows(
-        IllegalArgumentException.class, () -> WorldConfig.builder().gravity(Double.NaN).build());
+        IllegalArgumentException.class,
+        () -> WorldConfig.builder().gravityMetersPerSecSq(-1.0).build());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> WorldConfig.builder().gravityMetersPerSecSq(Double.NaN).build());
     assertThrows(IllegalArgumentException.class, () -> WorldConfig.builder().substeps(0).build());
     assertThrows(
         IllegalArgumentException.class,
@@ -47,6 +53,6 @@ class WorldConfigTest {
         IllegalArgumentException.class, () -> WorldConfig.builder().solverVelocitySteps(0).build());
     assertThrows(
         IllegalArgumentException.class,
-        () -> WorldConfig.builder().sleepVelocityThreshold(-0.1).build());
+        () -> WorldConfig.builder().sleepVelocityThresholdMetersPerSec(-0.1).build());
   }
 }

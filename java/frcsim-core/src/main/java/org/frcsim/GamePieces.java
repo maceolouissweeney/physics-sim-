@@ -19,18 +19,18 @@ import org.frcsim.jni.FrcSimJNI;
  */
 public final class GamePieces {
   private final SimWorld world;
-  private final FloatBuffer positions;
+  private final FloatBuffer positionsMeters;
   private final ByteBuffer states;
   private final int capacity;
-  private final float[] scratchPosition = new float[3];
+  private final float[] scratchPositionMeters = new float[3];
   private final int[] scratchIndex = new int[1];
 
-  GamePieces(SimWorld world, ByteBuffer positions, ByteBuffer states, int capacity) {
-    if (positions.capacity() != capacity * 3 * Float.BYTES || states.capacity() != capacity) {
+  GamePieces(SimWorld world, ByteBuffer positionsMeters, ByteBuffer states, int capacity) {
+    if (positionsMeters.capacity() != capacity * 3 * Float.BYTES || states.capacity() != capacity) {
       throw new FrcSimException("native piece buffers do not match maxPieces = " + capacity);
     }
     this.world = world;
-    this.positions = positions.order(ByteOrder.nativeOrder()).asFloatBuffer();
+    this.positionsMeters = positionsMeters.order(ByteOrder.nativeOrder()).asFloatBuffer();
     this.states = states;
     this.capacity = capacity;
   }
@@ -49,14 +49,14 @@ public final class GamePieces {
             world.nativeHandle(),
             spec.name(),
             spec.shape().ordinal(),
-            (float) spec.radius(),
-            (float) spec.halfHeight(),
-            (float) spec.halfExtentX(),
-            (float) spec.halfExtentY(),
-            (float) spec.halfExtentZ(),
-            (float) spec.mass(),
+            (float) spec.radiusMeters(),
+            (float) spec.halfHeightMeters(),
+            (float) spec.halfExtentXMeters(),
+            (float) spec.halfExtentYMeters(),
+            (float) spec.halfExtentZMeters(),
+            (float) spec.massKg(),
             spec.material().id(),
-            (float) spec.maxAngularVelocity());
+            (float) spec.maxAngularVelocityRadPerSec());
     return new GamePieceType(id, spec.name());
   }
 
@@ -76,18 +76,19 @@ public final class GamePieces {
    * Spawns one piece at rest. Does not allocate.
    *
    * @param type piece type
-   * @param x position x (m)
-   * @param y position y (m)
-   * @param z position z (m)
+   * @param xMeters position x
+   * @param yMeters position y
+   * @param zMeters position z
    * @return piece index
    * @throws CapacityExceededException if {@link WorldConfig#maxPieces()} is reached
    */
-  public int spawn(GamePieceType type, double x, double y, double z) {
+  public int spawn(GamePieceType type, double xMeters, double yMeters, double zMeters) {
     Objects.requireNonNull(type, "type");
-    scratchPosition[0] = (float) x;
-    scratchPosition[1] = (float) y;
-    scratchPosition[2] = (float) z;
-    FrcSimJNI.piecesSpawn(world.nativeHandle(), type.id(), scratchPosition, null, scratchIndex);
+    scratchPositionMeters[0] = (float) xMeters;
+    scratchPositionMeters[1] = (float) yMeters;
+    scratchPositionMeters[2] = (float) zMeters;
+    FrcSimJNI.piecesSpawn(
+        world.nativeHandle(), type.id(), scratchPositionMeters, null, scratchIndex);
     return scratchIndex[0];
   }
 
@@ -95,14 +96,14 @@ public final class GamePieces {
    * Spawns many pieces at rest.
    *
    * @param type piece type
-   * @param positionsXyz xyz triples
+   * @param positionsXyzMeters xyz triples
    * @return new piece indices
    * @throws CapacityExceededException if capacity would be exceeded (nothing is spawned)
    */
-  public int[] spawn(GamePieceType type, float[] positionsXyz) {
-    Objects.requireNonNull(positionsXyz, "positionsXyz");
-    int[] indices = new int[positionsXyz.length / 3];
-    spawn(type, positionsXyz, null, indices);
+  public int[] spawn(GamePieceType type, float[] positionsXyzMeters) {
+    Objects.requireNonNull(positionsXyzMeters, "positionsXyzMeters");
+    int[] indices = new int[positionsXyzMeters.length / 3];
+    spawn(type, positionsXyzMeters, null, indices);
     return indices;
   }
 
@@ -110,16 +111,20 @@ public final class GamePieces {
    * Spawns many pieces with optional initial velocities.
    *
    * @param type piece type
-   * @param positionsXyz xyz triples
-   * @param velocitiesXyz xyz triples matching positions, or null for at rest
+   * @param positionsXyzMeters xyz triples
+   * @param velocitiesXyzMetersPerSec xyz triples matching positions, or null for at rest
    * @param outIndices receives the new indices, or null
    * @throws CapacityExceededException if capacity would be exceeded (nothing is spawned)
    */
   public void spawn(
-      GamePieceType type, float[] positionsXyz, float[] velocitiesXyz, int[] outIndices) {
+      GamePieceType type,
+      float[] positionsXyzMeters,
+      float[] velocitiesXyzMetersPerSec,
+      int[] outIndices) {
     Objects.requireNonNull(type, "type");
-    Objects.requireNonNull(positionsXyz, "positionsXyz");
-    FrcSimJNI.piecesSpawn(world.nativeHandle(), type.id(), positionsXyz, velocitiesXyz, outIndices);
+    Objects.requireNonNull(positionsXyzMeters, "positionsXyzMeters");
+    FrcSimJNI.piecesSpawn(
+        world.nativeHandle(), type.id(), positionsXyzMeters, velocitiesXyzMetersPerSec, outIndices);
   }
 
   /**
@@ -148,23 +153,30 @@ public final class GamePieces {
    * Places a spawned piece on the field with a velocity, putting it {@link PieceState#ON_FIELD}.
    *
    * @param index piece index
-   * @param x position x
-   * @param y position y
-   * @param z position z
-   * @param vx velocity x (m/s)
-   * @param vy velocity y (m/s)
-   * @param vz velocity z (m/s)
+   * @param xMeters position x
+   * @param yMeters position y
+   * @param zMeters position z
+   * @param vxMetersPerSec velocity x
+   * @param vyMetersPerSec velocity y
+   * @param vzMetersPerSec velocity z
    */
-  public void teleport(int index, double x, double y, double z, double vx, double vy, double vz) {
+  public void teleport(
+      int index,
+      double xMeters,
+      double yMeters,
+      double zMeters,
+      double vxMetersPerSec,
+      double vyMetersPerSec,
+      double vzMetersPerSec) {
     FrcSimJNI.pieceTeleport(
         world.nativeHandle(),
         index,
-        (float) x,
-        (float) y,
-        (float) z,
-        (float) vx,
-        (float) vy,
-        (float) vz,
+        (float) xMeters,
+        (float) yMeters,
+        (float) zMeters,
+        (float) vxMetersPerSec,
+        (float) vyMetersPerSec,
+        (float) vzMetersPerSec,
         0f,
         0f,
         0f);
@@ -192,30 +204,30 @@ public final class GamePieces {
    * Piece x position after the latest step.
    *
    * @param index piece index
-   * @return x in meters
+   * @return meters
    */
-  public double x(int index) {
-    return positions.get(3 * checkIndex(index));
+  public double xMeters(int index) {
+    return positionsMeters.get(3 * checkIndex(index));
   }
 
   /**
    * Piece y position after the latest step.
    *
    * @param index piece index
-   * @return y in meters
+   * @return meters
    */
-  public double y(int index) {
-    return positions.get(3 * checkIndex(index) + 1);
+  public double yMeters(int index) {
+    return positionsMeters.get(3 * checkIndex(index) + 1);
   }
 
   /**
    * Piece z position after the latest step.
    *
    * @param index piece index
-   * @return z in meters
+   * @return meters
    */
-  public double z(int index) {
-    return positions.get(3 * checkIndex(index) + 2);
+  public double zMeters(int index) {
+    return positionsMeters.get(3 * checkIndex(index) + 2);
   }
 
   /**
@@ -250,14 +262,41 @@ public final class GamePieces {
   /**
    * Copies positions of indices {@code [0, count())} as xyz triples. Does not allocate.
    *
-   * @param destination array with room for {@code 3 * count()} floats
+   * @param destinationMeters array with room for {@code 3 * count()} floats
    * @return number of pieces copied
    */
-  public int copyPositions(float[] destination) {
+  public int copyPositionsMeters(float[] destinationMeters) {
     world.checkOpen();
-    int n = Math.min(count(), destination.length / 3);
-    positions.get(0, destination, 0, 3 * n);
+    int n = Math.min(count(), destinationMeters.length / 3);
+    positionsMeters.get(0, destinationMeters, 0, 3 * n);
     return n;
+  }
+
+  /**
+   * Copies positions of pieces in {@code state} as packed xyz triples, in index order. Does not
+   * allocate. Typical use: telemetry of every {@link PieceState#ON_FIELD} piece.
+   *
+   * @param state state to include
+   * @param destinationMeters array with room for {@code 3 * count()} floats
+   * @return number of pieces copied
+   */
+  public int copyPositionsMeters(PieceState state, float[] destinationMeters) {
+    world.checkOpen();
+    int n = count();
+    int limit = destinationMeters.length / 3;
+    byte code = (byte) state.code();
+    int copied = 0;
+    for (int i = 0; i < n && copied < limit; i++) {
+      if (states.get(i) == code) {
+        int src = 3 * i;
+        int dst = 3 * copied;
+        destinationMeters[dst] = positionsMeters.get(src);
+        destinationMeters[dst + 1] = positionsMeters.get(src + 1);
+        destinationMeters[dst + 2] = positionsMeters.get(src + 2);
+        copied++;
+      }
+    }
+    return copied;
   }
 
   private int checkIndex(int index) {

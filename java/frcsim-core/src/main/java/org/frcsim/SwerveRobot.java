@@ -7,52 +7,52 @@ import org.frcsim.jni.FrcSimJNI;
 /**
  * A simulated swerve robot: a zero-copy view of the native {@code frcsim_swerve_robot_io} block.
  *
- * <p>Voltage setters write shared memory that the next {@link SimWorld#step} reads; getters return
+ * <p>Command setters write shared memory that the next {@link SimWorld#step} reads; getters return
  * values from the latest step. Neither crosses into native code or allocates, so they are safe to
  * call every robot period.
  *
- * <p>Units: meters, radians, seconds, volts, amps, newtons. Module angles are continuous
- * (unwrapped), 0 = robot +X, counterclockwise positive. Drive encoder values are motor-rotor side
- * (wheel rotation times gear ratio), so wheel slip shows up as odometry drift.
+ * <p>Module angles are continuous (unwrapped), 0 = robot +X, counterclockwise positive. Drive rotor
+ * values are motor side (wheel rotation times gear ratio, plus module rotation times the coupling
+ * ratio), so wheel slip shows up as odometry drift.
  */
 public final class SwerveRobot {
   // Mirrors frcsim_swerve_robot_io / frcsim_swerve_module_io in frcsim_c.h; verified by tests.
-  static final int ROBOT_SIZE = 608;
-  static final int GYRO_YAW = 600;
-  static final int X = 0;
-  static final int Y = 8;
-  static final int Z = 16;
-  static final int YAW = 24;
+  static final int ROBOT_SIZE_BYTES = 608;
+  static final int X_METERS = 0;
+  static final int Y_METERS = 8;
+  static final int Z_METERS = 16;
+  static final int YAW_RADIANS = 24;
   static final int QX = 32;
   static final int QY = 36;
   static final int QZ = 40;
   static final int QW = 44;
-  static final int VX = 48;
-  static final int VY = 52;
-  static final int VZ = 56;
-  static final int WX = 60;
-  static final int WY = 64;
-  static final int WZ = 68;
-  static final int BATTERY_VOLTAGE = 72;
-  static final int BATTERY_CURRENT = 76;
+  static final int VX_METERS_PER_SEC = 48;
+  static final int VY_METERS_PER_SEC = 52;
+  static final int VZ_METERS_PER_SEC = 56;
+  static final int WX_RAD_PER_SEC = 60;
+  static final int WY_RAD_PER_SEC = 64;
+  static final int WZ_RAD_PER_SEC = 68;
+  static final int BATTERY_VOLTS = 72;
+  static final int BATTERY_CURRENT_AMPS = 76;
   static final int BROWNOUT = 80;
   static final int MODULE_COUNT = 84;
   static final int MODULES = 88;
-  static final int MODULE_SIZE = 64;
-  static final int DRIVE_VOLTAGE = 0;
-  static final int STEER_VOLTAGE = 4;
-  static final int DRIVE_ROTOR_POSITION = 8;
-  static final int STEER_ANGLE = 16;
-  static final int DRIVE_ROTOR_VELOCITY = 24;
-  static final int STEER_VELOCITY = 28;
-  static final int DRIVE_APPLIED_VOLTAGE = 32;
-  static final int DRIVE_STATOR_CURRENT = 36;
-  static final int DRIVE_SUPPLY_CURRENT = 40;
-  static final int STEER_APPLIED_VOLTAGE = 44;
-  static final int STEER_STATOR_CURRENT = 48;
-  static final int STEER_SUPPLY_CURRENT = 52;
-  static final int NORMAL_FORCE = 56;
-  static final int SLIP_SPEED = 60;
+  static final int MODULE_SIZE_BYTES = 64;
+  static final int GYRO_YAW_RADIANS = 600;
+  static final int DRIVE_COMMAND_VOLTS = 0;
+  static final int STEER_COMMAND_VOLTS = 4;
+  static final int DRIVE_ROTOR_POSITION_RADIANS = 8;
+  static final int STEER_ANGLE_RADIANS = 16;
+  static final int DRIVE_ROTOR_VELOCITY_RAD_PER_SEC = 24;
+  static final int STEER_VELOCITY_RAD_PER_SEC = 28;
+  static final int DRIVE_APPLIED_VOLTS = 32;
+  static final int DRIVE_STATOR_CURRENT_AMPS = 36;
+  static final int DRIVE_SUPPLY_CURRENT_AMPS = 40;
+  static final int STEER_APPLIED_VOLTS = 44;
+  static final int STEER_STATOR_CURRENT_AMPS = 48;
+  static final int STEER_SUPPLY_CURRENT_AMPS = 52;
+  static final int NORMAL_FORCE_NEWTONS = 56;
+  static final int SLIP_SPEED_METERS_PER_SEC = 60;
 
   private final SimWorld world;
   private final int index;
@@ -61,9 +61,9 @@ public final class SwerveRobot {
   private final double[] steerGearRatios;
 
   SwerveRobot(SimWorld world, int index, ByteBuffer io, SwerveDriveConfig config) {
-    if (io.capacity() != ROBOT_SIZE) {
+    if (io.capacity() != ROBOT_SIZE_BYTES) {
       throw new FrcSimException(
-          "native robot I/O block is " + io.capacity() + " bytes, expected " + ROBOT_SIZE);
+          "native robot I/O block is " + io.capacity() + " bytes, expected " + ROBOT_SIZE_BYTES);
     }
     this.world = world;
     this.index = index;
@@ -101,8 +101,8 @@ public final class SwerveRobot {
    * @param module module index
    * @param volts commanded voltage (clamped to the battery voltage)
    */
-  public void setDriveVoltage(int module, double volts) {
-    io.putFloat(moduleOffset(module) + DRIVE_VOLTAGE, (float) volts);
+  public void setDriveCommandVolts(int module, double volts) {
+    io.putFloat(moduleOffset(module) + DRIVE_COMMAND_VOLTS, (float) volts);
   }
 
   /**
@@ -111,8 +111,8 @@ public final class SwerveRobot {
    * @param module module index
    * @param volts commanded voltage (clamped to the battery voltage)
    */
-  public void setSteerVoltage(int module, double volts) {
-    io.putFloat(moduleOffset(module) + STEER_VOLTAGE, (float) volts);
+  public void setSteerCommandVolts(int module, double volts) {
+    io.putFloat(moduleOffset(module) + STEER_COMMAND_VOLTS, (float) volts);
   }
 
   /**
@@ -122,69 +122,70 @@ public final class SwerveRobot {
    * @param driveVolts drive voltage
    * @param steerVolts steer voltage
    */
-  public void setModuleVoltages(int module, double driveVolts, double steerVolts) {
+  public void setModuleCommandVolts(int module, double driveVolts, double steerVolts) {
     int offset = moduleOffset(module);
-    io.putFloat(offset + DRIVE_VOLTAGE, (float) driveVolts);
-    io.putFloat(offset + STEER_VOLTAGE, (float) steerVolts);
+    io.putFloat(offset + DRIVE_COMMAND_VOLTS, (float) driveVolts);
+    io.putFloat(offset + STEER_COMMAND_VOLTS, (float) steerVolts);
   }
 
   /**
-   * Places the robot on the carpet at rest.
+   * Places the robot on the carpet at rest and re-zeros the gyro to the new heading.
    *
-   * @param x field x (m)
-   * @param y field y (m)
+   * @param xMeters field x
+   * @param yMeters field y
    * @param yawRadians heading
    */
-  public void resetPose(double x, double y, double yawRadians) {
-    FrcSimJNI.robotResetPose(world.nativeHandle(), index, (float) x, (float) y, (float) yawRadians);
+  public void resetPose(double xMeters, double yMeters, double yawRadians) {
+    FrcSimJNI.robotResetPose(
+        world.nativeHandle(), index, (float) xMeters, (float) yMeters, (float) yawRadians);
   }
 
   // ---- Chassis outputs ----------------------------------------------------------------------
 
   /**
-   * Field x of the robot origin (m).
+   * Field x of the robot origin.
    *
-   * @return x
+   * @return meters
    */
-  public double x() {
-    return readDouble(X);
+  public double xMeters() {
+    return readDouble(X_METERS);
   }
 
   /**
-   * Field y of the robot origin (m).
+   * Field y of the robot origin.
    *
-   * @return y
+   * @return meters
    */
-  public double y() {
-    return readDouble(Y);
+  public double yMeters() {
+    return readDouble(Y_METERS);
   }
 
   /**
-   * Height of the robot origin (m); about 0 on flat carpet.
+   * Height of the robot origin; about 0 on flat carpet.
    *
-   * @return z
+   * @return meters
    */
-  public double z() {
-    return readDouble(Z);
+  public double zMeters() {
+    return readDouble(Z_METERS);
   }
 
   /**
    * True continuous (unwrapped) yaw, counterclockwise positive: ground truth.
    *
-   * @return yaw in radians
+   * @return radians
    */
   public double yawRadians() {
-    return readDouble(YAW);
+    return readDouble(YAW_RADIANS);
   }
 
   /**
    * Gyro reading: continuous yaw with the configured scale error, drift, and noise (equal to {@link
    * #yawRadians()} with ideal sensors). Resetting the pose re-zeros the gyro to the new heading.
    *
-   * @return measured yaw in radians
+   * @return radians
    */
   public double gyroYawRadians() {
-    return readDouble(GYRO_YAW);
+    return readDouble(GYRO_YAW_RADIANS);
   }
 
   /**
@@ -224,75 +225,75 @@ public final class SwerveRobot {
   }
 
   /**
-   * Center-of-mass velocity along field x (m/s).
+   * Center-of-mass velocity along field x.
    *
-   * @return vx
+   * @return m/s
    */
-  public double vx() {
-    return readFloat(VX);
+  public double vxMetersPerSec() {
+    return readFloat(VX_METERS_PER_SEC);
   }
 
   /**
-   * Center-of-mass velocity along field y (m/s).
+   * Center-of-mass velocity along field y.
    *
-   * @return vy
+   * @return m/s
    */
-  public double vy() {
-    return readFloat(VY);
+  public double vyMetersPerSec() {
+    return readFloat(VY_METERS_PER_SEC);
   }
 
   /**
-   * Center-of-mass velocity along field z (m/s).
+   * Center-of-mass velocity along field z.
    *
-   * @return vz
+   * @return m/s
    */
-  public double vz() {
-    return readFloat(VZ);
+  public double vzMetersPerSec() {
+    return readFloat(VZ_METERS_PER_SEC);
   }
 
   /**
-   * Angular velocity about field x (rad/s).
+   * Angular velocity about field x.
    *
-   * @return wx
+   * @return rad/s
    */
-  public double wx() {
-    return readFloat(WX);
+  public double wxRadPerSec() {
+    return readFloat(WX_RAD_PER_SEC);
   }
 
   /**
-   * Angular velocity about field y (rad/s).
+   * Angular velocity about field y.
    *
-   * @return wy
+   * @return rad/s
    */
-  public double wy() {
-    return readFloat(WY);
+  public double wyRadPerSec() {
+    return readFloat(WY_RAD_PER_SEC);
   }
 
   /**
-   * Yaw rate, angular velocity about field z (rad/s).
+   * Yaw rate: angular velocity about field z.
    *
-   * @return wz
+   * @return rad/s
    */
-  public double wz() {
-    return readFloat(WZ);
+  public double wzRadPerSec() {
+    return readFloat(WZ_RAD_PER_SEC);
   }
 
   /**
-   * Battery bus voltage after sag (V).
+   * Battery bus voltage after sag.
    *
-   * @return voltage
+   * @return volts
    */
-  public double batteryVoltage() {
-    return readFloat(BATTERY_VOLTAGE);
+  public double batteryVolts() {
+    return readFloat(BATTERY_VOLTS);
   }
 
   /**
-   * Total supply current drawn by all simulated motors (A).
+   * Total supply current drawn by all simulated motors.
    *
-   * @return current
+   * @return amps
    */
-  public double batteryCurrent() {
-    return readFloat(BATTERY_CURRENT);
+  public double batteryCurrentAmps() {
+    return readFloat(BATTERY_CURRENT_AMPS);
   }
 
   /**
@@ -308,56 +309,65 @@ public final class SwerveRobot {
   // ---- Module outputs -----------------------------------------------------------------------
 
   /**
-   * Drive encoder reading: rotor position (rad), i.e. wheel rotation times gear ratio, quantized to
-   * {@link SwerveDriveConfig#driveEncoderCountsPerRev} when set.
+   * Drive encoder reading: rotor position, i.e. wheel rotation times gear ratio plus module
+   * rotation times {@link SwerveModuleConfig#couplingGearRatio}, quantized to {@link
+   * SwerveDriveConfig#driveEncoderCountsPerRev} when set.
    *
    * @param module module index
-   * @return rotor position
+   * @return radians
    */
-  public double driveRotorPosition(int module) {
-    world.checkOpen();
-    return io.getDouble(moduleOffset(module) + DRIVE_ROTOR_POSITION);
+  public double driveRotorPositionRadians(int module) {
+    return io.getDouble(moduleOffset(module) + DRIVE_ROTOR_POSITION_RADIANS);
   }
 
   /**
-   * Drive motor rotor velocity (rad/s).
+   * Drive motor rotor velocity, including the coupling term.
    *
    * @param module module index
-   * @return rotor velocity
+   * @return rad/s
    */
-  public double driveRotorVelocity(int module) {
-    return readModuleFloat(module, DRIVE_ROTOR_VELOCITY);
+  public double driveRotorVelocityRadPerSec(int module) {
+    return readModuleFloat(module, DRIVE_ROTOR_VELOCITY_RAD_PER_SEC);
   }
 
   /**
-   * Continuous module angle (rad), as an absolute encoder on the module would read it (unwrapped).
+   * Continuous module angle, as an absolute encoder on the module would read it (unwrapped).
    *
    * @param module module index
-   * @return module angle
+   * @return radians
    */
-  public double steerAngle(int module) {
-    world.checkOpen();
-    return io.getDouble(moduleOffset(module) + STEER_ANGLE);
+  public double steerAngleRadians(int module) {
+    return io.getDouble(moduleOffset(module) + STEER_ANGLE_RADIANS);
   }
 
   /**
-   * Steer motor rotor position (rad), i.e. module angle times steer gear ratio.
+   * Module angular velocity about the steer axis.
    *
    * @param module module index
-   * @return rotor position
+   * @return rad/s
    */
-  public double steerRotorPosition(int module) {
-    return steerAngle(module) * steerGearRatios[module];
+  public double steerVelocityRadPerSec(int module) {
+    return readModuleFloat(module, STEER_VELOCITY_RAD_PER_SEC);
   }
 
   /**
-   * Module angular velocity about the steer axis (rad/s).
+   * Steer motor rotor position: module angle times steer gear ratio.
    *
    * @param module module index
-   * @return steer velocity
+   * @return radians
    */
-  public double steerVelocity(int module) {
-    return readModuleFloat(module, STEER_VELOCITY);
+  public double steerRotorPositionRadians(int module) {
+    return steerAngleRadians(module) * steerGearRatios[module];
+  }
+
+  /**
+   * Steer motor rotor velocity: module angular velocity times steer gear ratio.
+   *
+   * @param module module index
+   * @return rad/s
+   */
+  public double steerRotorVelocityRadPerSec(int module) {
+    return steerVelocityRadPerSec(module) * steerGearRatios[module];
   }
 
   /**
@@ -366,28 +376,28 @@ public final class SwerveRobot {
    * @param module module index
    * @return volts
    */
-  public double driveAppliedVoltage(int module) {
-    return readModuleFloat(module, DRIVE_APPLIED_VOLTAGE);
+  public double driveAppliedVolts(int module) {
+    return readModuleFloat(module, DRIVE_APPLIED_VOLTS);
   }
 
   /**
-   * Drive stator current (A).
+   * Drive stator current.
    *
    * @param module module index
    * @return amps
    */
-  public double driveStatorCurrent(int module) {
-    return readModuleFloat(module, DRIVE_STATOR_CURRENT);
+  public double driveStatorCurrentAmps(int module) {
+    return readModuleFloat(module, DRIVE_STATOR_CURRENT_AMPS);
   }
 
   /**
-   * Drive supply current (A).
+   * Drive supply current.
    *
    * @param module module index
    * @return amps
    */
-  public double driveSupplyCurrent(int module) {
-    return readModuleFloat(module, DRIVE_SUPPLY_CURRENT);
+  public double driveSupplyCurrentAmps(int module) {
+    return readModuleFloat(module, DRIVE_SUPPLY_CURRENT_AMPS);
   }
 
   /**
@@ -396,48 +406,48 @@ public final class SwerveRobot {
    * @param module module index
    * @return volts
    */
-  public double steerAppliedVoltage(int module) {
-    return readModuleFloat(module, STEER_APPLIED_VOLTAGE);
+  public double steerAppliedVolts(int module) {
+    return readModuleFloat(module, STEER_APPLIED_VOLTS);
   }
 
   /**
-   * Steer stator current (A).
+   * Steer stator current.
    *
    * @param module module index
    * @return amps
    */
-  public double steerStatorCurrent(int module) {
-    return readModuleFloat(module, STEER_STATOR_CURRENT);
+  public double steerStatorCurrentAmps(int module) {
+    return readModuleFloat(module, STEER_STATOR_CURRENT_AMPS);
   }
 
   /**
-   * Steer supply current (A).
+   * Steer supply current.
    *
    * @param module module index
    * @return amps
    */
-  public double steerSupplyCurrent(int module) {
-    return readModuleFloat(module, STEER_SUPPLY_CURRENT);
+  public double steerSupplyCurrentAmps(int module) {
+    return readModuleFloat(module, STEER_SUPPLY_CURRENT_AMPS);
   }
 
   /**
-   * Normal force on the module's wheel (N); shows load transfer.
+   * Normal force on the module's wheel; shows load transfer.
    *
    * @param module module index
    * @return newtons
    */
-  public double normalForce(int module) {
-    return readModuleFloat(module, NORMAL_FORCE);
+  public double normalForceNewtons(int module) {
+    return readModuleFloat(module, NORMAL_FORCE_NEWTONS);
   }
 
   /**
-   * Slip speed of the wheel's contact patch (m/s); near zero while rolling.
+   * Slip speed of the wheel's contact patch; near zero while rolling.
    *
    * @param module module index
    * @return m/s
    */
-  public double slipSpeed(int module) {
-    return readModuleFloat(module, SLIP_SPEED);
+  public double slipSpeedMetersPerSec(int module) {
+    return readModuleFloat(module, SLIP_SPEED_METERS_PER_SEC);
   }
 
   private int moduleOffset(int module) {
@@ -446,7 +456,7 @@ public final class SwerveRobot {
       throw new IndexOutOfBoundsException(
           "module " + module + " out of range 0.." + (moduleCount - 1));
     }
-    return MODULES + module * MODULE_SIZE;
+    return MODULES + module * MODULE_SIZE_BYTES;
   }
 
   private double readDouble(int offset) {

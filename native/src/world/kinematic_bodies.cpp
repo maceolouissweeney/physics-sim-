@@ -23,16 +23,16 @@ KinematicBodies::~KinematicBodies() {
     }
 }
 
-std::uint32_t KinematicBodies::addBox(JPH::Vec3 center, JPH::Vec3 halfExtents, JPH::Quat rotation,
+std::uint32_t KinematicBodies::addBox(JPH::Vec3 centerMeters, JPH::Vec3 halfExtentsMeters, JPH::Quat rotation,
                                       MaterialId material) {
     if (rotation.IsNaN() || !rotation.IsNormalized(1.0e-3f)) {
         throw std::invalid_argument("kinematic body rotation must be a unit quaternion");
     }
     const Material& properties = m_materials.get(material);
-    const auto shape = makeBox(halfExtents, kStaticConvexRadius);
+    const auto shape = makeBox(halfExtentsMeters, kStaticConvexRadiusMeters);
     const auto index = static_cast<std::uint32_t>(m_bodies.size());
 
-    JPH::BodyCreationSettings settings(shape.GetPtr(), JPH::RVec3(center), rotation.Normalized(),
+    JPH::BodyCreationSettings settings(shape.GetPtr(), JPH::RVec3(centerMeters), rotation.Normalized(),
                                        JPH::EMotionType::Kinematic, ObjectLayers::kRobot);
     settings.mFriction = properties.friction;
     settings.mRestitution = properties.restitution;
@@ -48,18 +48,18 @@ std::uint32_t KinematicBodies::addBox(JPH::Vec3 center, JPH::Vec3 halfExtents, J
     return index;
 }
 
-void KinematicBodies::moveTo(std::uint32_t index, JPH::Vec3 position, JPH::Quat rotation, float dtSeconds) {
+void KinematicBodies::moveTo(std::uint32_t index, JPH::Vec3 positionMeters, JPH::Quat rotation, float dtSeconds) {
     if (!(dtSeconds > 0.0f) || !std::isfinite(dtSeconds)) {
         throw std::invalid_argument("dt must be finite and > 0");
     }
     if (rotation.IsNaN() || !rotation.IsNormalized(1.0e-3f)) {
         throw std::invalid_argument("kinematic body rotation must be a unit quaternion");
     }
-    m_physics.GetBodyInterfaceNoLock().MoveKinematic(require(index), JPH::RVec3(position), rotation.Normalized(),
+    m_physics.GetBodyInterfaceNoLock().MoveKinematic(require(index), JPH::RVec3(positionMeters), rotation.Normalized(),
                                                      dtSeconds);
 }
 
-JPH::Vec3 KinematicBodies::position(std::uint32_t index) const {
+JPH::Vec3 KinematicBodies::positionMeters(std::uint32_t index) const {
     return JPH::Vec3(m_physics.GetBodyInterfaceNoLock().GetPosition(require(index)));
 }
 

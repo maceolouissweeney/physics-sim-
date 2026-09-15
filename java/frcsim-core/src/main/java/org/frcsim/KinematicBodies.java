@@ -17,26 +17,32 @@ public final class KinematicBodies {
   /**
    * Adds an axis-aligned kinematic box.
    *
-   * @param x center x
-   * @param y center y
-   * @param z center z
-   * @param halfX half extent x
-   * @param halfY half extent y
-   * @param halfZ half extent z
+   * @param xMeters center x
+   * @param yMeters center y
+   * @param zMeters center z
+   * @param halfXMeters half extent x
+   * @param halfYMeters half extent y
+   * @param halfZMeters half extent z
    * @param material surface material
    * @return kinematic body index
    */
   public int addBox(
-      double x, double y, double z, double halfX, double halfY, double halfZ, Material material) {
+      double xMeters,
+      double yMeters,
+      double zMeters,
+      double halfXMeters,
+      double halfYMeters,
+      double halfZMeters,
+      Material material) {
     Objects.requireNonNull(material, "material");
     return FrcSimJNI.kinematicAddBox(
         world.nativeHandle(),
-        (float) x,
-        (float) y,
-        (float) z,
-        (float) halfX,
-        (float) halfY,
-        (float) halfZ,
+        (float) xMeters,
+        (float) yMeters,
+        (float) zMeters,
+        (float) halfXMeters,
+        (float) halfYMeters,
+        (float) halfZMeters,
         0f,
         0f,
         0f,
@@ -49,19 +55,25 @@ public final class KinematicBodies {
    * resulting velocity persists until the next call.
    *
    * @param index kinematic body index
-   * @param x target x
-   * @param y target y
-   * @param z target z
+   * @param xMeters target x
+   * @param yMeters target y
+   * @param zMeters target z
    * @param yawRadians target rotation about +Z
    * @param dtSeconds duration of the next step
    */
-  public void moveTo(int index, double x, double y, double z, double yawRadians, double dtSeconds) {
+  public void moveTo(
+      int index,
+      double xMeters,
+      double yMeters,
+      double zMeters,
+      double yawRadians,
+      double dtSeconds) {
     FrcSimJNI.kinematicMoveTo(
         world.nativeHandle(),
         index,
-        (float) x,
-        (float) y,
-        (float) z,
+        (float) xMeters,
+        (float) yMeters,
+        (float) zMeters,
         0f,
         0f,
         (float) Math.sin(yawRadians / 2.0),

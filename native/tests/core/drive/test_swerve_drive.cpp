@@ -19,8 +19,8 @@
 namespace frcsim {
 namespace {
 
-constexpr float kGravity = 9.80665f;
-constexpr float kControlDt = 0.004f; // 250 Hz, like a motor controller's onboard loop
+constexpr float kGravityMetersPerSecSq = 9.80665f;
+constexpr float kControlDtSeconds = 0.004f; // 250 Hz, like a motor controller's onboard loop
 
 World makeWorld() {
     WorldConfig config;
@@ -32,29 +32,29 @@ void addCarpet(World& world) {
     world.field().addGround(0.0f, world.materials().require("carpet"));
 }
 
-/// Steers every module toward `angles` with a P loop and applies `driveVolts`, for `seconds`.
+/// Steers every module toward `anglesRadians` with a P loop and applies `driveVolts`, for `seconds`.
 /// The P gain stands in for a motor controller's onboard position loop: stiff enough that steer friction and
 /// contact scrub leave well under 0.02 rad of steady-state error.
-void drive(World& world, SwerveRobot& robot, const std::vector<double>& angles, float driveVolts, float seconds,
-           float steerKp = 20.0f) {
-    const int steps = static_cast<int>(std::lround(seconds / kControlDt));
+void drive(World& world, SwerveRobot& robot, const std::vector<double>& anglesRadians, float driveVolts,
+           float seconds, float steerKpVoltsPerRadian = 20.0f) {
+    const int steps = static_cast<int>(std::lround(seconds / kControlDtSeconds));
     for (int s = 0; s < steps; ++s) {
         for (std::size_t m = 0; m < robot.moduleCount(); ++m) {
-            const double error = std::remainder(angles[m] - robot.module(m).steerAngle, 6.283185307179586);
-            const float steerVolts = std::clamp(static_cast<float>(steerKp * error), -12.0f, 12.0f);
+            const double errorRadians =
+                std::remainder(anglesRadians[m] - robot.module(m).steerAngleRadians, 6.283185307179586);
+            const float steerVolts = std::clamp(static_cast<float>(steerKpVoltsPerRadian * errorRadians), -12.0f, 12.0f);
             robot.setModuleVoltages(m, driveVolts, steerVolts);
         }
-        world.step(kControlDt, 1);
+        world.step(kControlDtSeconds, 1);
     }
 }
 
-std::vector<double> straight(const SwerveRobot& robot, double angle = 0.0) {
-    return std::vector<double>(robot.moduleCount(), angle);
+std::vector<double> straight(const SwerveRobot& robot, double angleRadians = 0.0) {
+    return std::vector<double>(robot.moduleCount(), angleRadians);
 }
 
 SwerveDriveConfig defaultRobot() {
-    SwerveDriveConfig config = makeRectangularSwerve(0.55f, 0.55f);
-    return config;
+    return makeRectangularSwerve(0.55f, 0.55f);
 }
 
 TEST(SwerveDrive, RestsOnCarpetAndSupportsItsWeight) {
@@ -64,15 +64,15 @@ TEST(SwerveDrive, RestsOnCarpetAndSupportsItsWeight) {
     drive(world, robot, straight(robot), 0.0f, 2.0f);
 
     const RobotPose pose = robot.pose();
-    EXPECT_NEAR(pose.position.GetZ(), 0.0f, 0.003f) << "robot origin should sit on the carpet";
-    EXPECT_NEAR(pose.position.GetX(), 2.0f, 0.005f);
-    EXPECT_NEAR(pose.position.GetY(), 2.0f, 0.005f);
-    float totalNormal = 0.0f;
+    EXPECT_NEAR(pose.positionMeters.GetZ(), 0.0f, 0.003f) << "robot origin should sit on the carpet";
+    EXPECT_NEAR(pose.positionMeters.GetX(), 2.0f, 0.005f);
+    EXPECT_NEAR(pose.positionMeters.GetY(), 2.0f, 0.005f);
+    float totalNormalNewtons = 0.0f;
     for (std::size_t m = 0; m < robot.moduleCount(); ++m) {
         EXPECT_TRUE(robot.module(m).hasContact);
-        totalNormal += robot.module(m).normalForce;
+        totalNormalNewtons += robot.module(m).normalForceNewtons;
     }
-    EXPECT_NEAR(totalNormal, 60.0f * kGravity, 60.0f * kGravity * 0.03f);
+    EXPECT_NEAR(totalNormalNewtons, 60.0f * kGravityMetersPerSecSq, 60.0f * kGravityMetersPerSecSq * 0.03f);
 }
 
 TEST(SwerveDrive, FreeSpeedMatchesMotorModel) {
@@ -86,18 +86,19 @@ TEST(SwerveDrive, FreeSpeedMatchesMotorModel) {
     const SwerveModuleConfig& m = config.modules[0];
     const DcMotorConstants motor = deriveMotorConstants(m.driveMotor);
     const float g = m.driveGearRatio;
-    const float wheelSpeed =
-        (12.0f - m.driveFrictionTorque * motor.resistance / (m.driveEfficiency * g * motor.kt)) * motor.kv / g;
-    const float expected = wheelSpeed * m.wheelRadius;
-    EXPECT_NEAR(robot.pose().linearVelocity.GetX(), expected, expected * 0.03f);
-    EXPECT_NEAR(robot.pose().linearVelocity.GetY(), 0.0f, 0.05f);
+    const float wheelSpeedRadPerSec = (12.0f - m.driveFrictionTorqueNewtonMeters * motor.resistanceOhms /
+                                                   (m.driveEfficiency * g * motor.ktNewtonMetersPerAmp)) *
+                                      motor.kvRadPerSecPerVolt / g;
+    const float expectedMetersPerSec = wheelSpeedRadPerSec * m.wheelRadiusMeters;
+    EXPECT_NEAR(robot.pose().linearVelocityMetersPerSec.GetX(), expectedMetersPerSec, expectedMetersPerSec * 0.03f);
+    EXPECT_NEAR(robot.pose().linearVelocityMetersPerSec.GetY(), 0.0f, 0.05f);
 }
 
 TEST(SwerveDrive, TractionLimitsAcceleration) {
     World world = makeWorld();
     addCarpet(world); // carpet friction factor 1.0
     SwerveDriveConfig config = defaultRobot();
-    config.battery.internalResistance = 0.0f; // isolate traction from battery sag
+    config.battery.internalResistanceOhms = 0.0f; // isolate traction from battery sag
     for (SwerveModuleConfig& m : config.modules) {
         m.tire = TireParams{1.0f, 1.0f, 0.1f};
         m.driveCurrentLimits = CurrentLimits{}; // stall torque far exceeds mu * N * r on every wheel
@@ -105,15 +106,17 @@ TEST(SwerveDrive, TractionLimitsAcceleration) {
     SwerveRobot& robot = world.robots().swerve(world.robots().addSwerve(config, 1.0f, 4.0f, 0.0f));
     drive(world, robot, straight(robot), 0.0f, 0.5f); // settle
     drive(world, robot, straight(robot), 12.0f, 0.05f);
-    const float v0 = robot.pose().linearVelocity.GetX();
+    const float v0MetersPerSec = robot.pose().linearVelocityMetersPerSec.GetX();
     drive(world, robot, straight(robot), 12.0f, 0.15f);
 
     // Every wheel slides, so ground force is mu * N regardless of load transfer: a = mu * g.
-    const float acceleration = (robot.pose().linearVelocity.GetX() - v0) / 0.15f;
-    EXPECT_LT(acceleration, kGravity * 1.03f) << "cannot out-accelerate mu * g";
-    EXPECT_GT(acceleration, kGravity * 0.93f);
-    const float wheelSurfaceSpeed = robot.module(0).wheelVelocity * config.modules[0].wheelRadius;
-    EXPECT_GT(wheelSurfaceSpeed, robot.pose().linearVelocity.GetX() + 0.1f) << "wheels should be slipping";
+    const float accelerationMetersPerSecSq = (robot.pose().linearVelocityMetersPerSec.GetX() - v0MetersPerSec) / 0.15f;
+    EXPECT_LT(accelerationMetersPerSecSq, kGravityMetersPerSecSq * 1.03f) << "cannot out-accelerate mu * g";
+    EXPECT_GT(accelerationMetersPerSecSq, kGravityMetersPerSecSq * 0.93f);
+    const float wheelSurfaceSpeedMetersPerSec =
+        robot.module(0).wheelVelocityRadPerSec * config.modules[0].wheelRadiusMeters;
+    EXPECT_GT(wheelSurfaceSpeedMetersPerSec, robot.pose().linearVelocityMetersPerSec.GetX() + 0.1f)
+        << "wheels should be slipping";
 }
 
 TEST(SwerveDrive, LoadTransferUnloadsFrontWheels) {
@@ -126,27 +129,30 @@ TEST(SwerveDrive, LoadTransferUnloadsFrontWheels) {
     SwerveRobot& robot = world.robots().swerve(world.robots().addSwerve(config, 1.0f, 4.0f, 0.0f));
     drive(world, robot, straight(robot), 0.0f, 0.5f);
     drive(world, robot, straight(robot), 12.0f, 0.05f);
-    const float v0 = robot.pose().linearVelocity.GetX();
+    const float v0MetersPerSec = robot.pose().linearVelocityMetersPerSec.GetX();
     drive(world, robot, straight(robot), 12.0f, 0.2f);
-    const float acceleration = (robot.pose().linearVelocity.GetX() - v0) / 0.2f;
+    const float accelerationMetersPerSecSq = (robot.pose().linearVelocityMetersPerSec.GetX() - v0MetersPerSec) / 0.2f;
 
     // Rear wheels gain load and are current-limited; front wheels lose load and slide at mu * N.
     //   N_front = mg/4 - m*a*h/(2L),  m*a = 2*F_limit + 2*mu*N_front
     //   => a = (2*F_limit + mu*m*g/2) / (m * (1 + mu*h/L))
     const SwerveModuleConfig& m = config.modules[0];
     const DcMotorConstants motor = deriveMotorConstants(m.driveMotor);
-    const float fLimit =
-        (m.driveEfficiency * m.driveGearRatio * motor.kt * m.driveCurrentLimits.stator - m.driveFrictionTorque) /
-        m.wheelRadius;
-    const float wheelBase = 0.55f;
-    const float expected = (2.0f * fLimit + config.mass * kGravity / 2.0f) /
-                           (config.mass * (1.0f + config.comHeight / wheelBase));
-    EXPECT_NEAR(acceleration, expected, expected * 0.07f);
+    const float limitForceNewtons = (m.driveEfficiency * m.driveGearRatio * motor.ktNewtonMetersPerAmp *
+                                         m.driveCurrentLimits.statorAmps -
+                                     m.driveFrictionTorqueNewtonMeters) /
+                                    m.wheelRadiusMeters;
+    const float wheelBaseMeters = 0.55f;
+    const float expectedMetersPerSecSq =
+        (2.0f * limitForceNewtons + config.massKg * kGravityMetersPerSecSq / 2.0f) /
+        (config.massKg * (1.0f + config.comHeightMeters / wheelBaseMeters));
+    EXPECT_NEAR(accelerationMetersPerSecSq, expectedMetersPerSecSq, expectedMetersPerSecSq * 0.07f);
 
-    const float front = 0.5f * (robot.module(0).normalForce + robot.module(1).normalForce);
-    const float rear = 0.5f * (robot.module(2).normalForce + robot.module(3).normalForce);
-    const float expectedShift = config.mass * acceleration * config.comHeight / wheelBase; // rear - front per wheel
-    EXPECT_NEAR(rear - front, expectedShift, expectedShift * 0.2f);
+    const float frontNewtons = 0.5f * (robot.module(0).normalForceNewtons + robot.module(1).normalForceNewtons);
+    const float rearNewtons = 0.5f * (robot.module(2).normalForceNewtons + robot.module(3).normalForceNewtons);
+    const float expectedShiftNewtons = // rear - front per wheel
+        config.massKg * accelerationMetersPerSecSq * config.comHeightMeters / wheelBaseMeters;
+    EXPECT_NEAR(rearNewtons - frontNewtons, expectedShiftNewtons, expectedShiftNewtons * 0.2f);
 }
 
 TEST(SwerveDrive, CurrentLimitSetsAcceleration) {
@@ -162,12 +168,13 @@ TEST(SwerveDrive, CurrentLimitSetsAcceleration) {
 
     const SwerveModuleConfig& m = config.modules[0];
     const DcMotorConstants motor = deriveMotorConstants(m.driveMotor);
-    const float forcePerWheel =
-        (m.driveEfficiency * m.driveGearRatio * motor.kt * 20.0f - m.driveFrictionTorque) / m.wheelRadius;
-    const float expected = 4.0f * forcePerWheel / config.mass;
-    const float acceleration = robot.pose().linearVelocity.GetX() / 0.3f;
-    EXPECT_NEAR(acceleration, expected, expected * 0.08f);
-    EXPECT_NEAR(robot.module(0).driveStatorCurrent, 20.0f, 0.5f);
+    const float forcePerWheelNewtons =
+        (m.driveEfficiency * m.driveGearRatio * motor.ktNewtonMetersPerAmp * 20.0f - m.driveFrictionTorqueNewtonMeters) /
+        m.wheelRadiusMeters;
+    const float expectedMetersPerSecSq = 4.0f * forcePerWheelNewtons / config.massKg;
+    const float accelerationMetersPerSecSq = robot.pose().linearVelocityMetersPerSec.GetX() / 0.3f;
+    EXPECT_NEAR(accelerationMetersPerSecSq, expectedMetersPerSecSq, expectedMetersPerSecSq * 0.08f);
+    EXPECT_NEAR(robot.module(0).driveStatorCurrentAmps, 20.0f, 0.5f);
 }
 
 TEST(SwerveDrive, RotatesInPlace) {
@@ -175,31 +182,35 @@ TEST(SwerveDrive, RotatesInPlace) {
     addCarpet(world);
     SwerveDriveConfig config = defaultRobot();
     SwerveRobot& robot = world.robots().swerve(world.robots().addSwerve(config, 4.0f, 4.0f, 0.0f));
-    std::vector<double> tangent;
+    std::vector<double> tangentRadians;
     for (const SwerveModuleConfig& m : config.modules) {
-        tangent.push_back(std::atan2(m.x, -m.y)); // direction of omega x r for CCW rotation
+        tangentRadians.push_back(std::atan2(m.xMeters, -m.yMeters)); // direction of omega x r for CCW rotation
     }
-    drive(world, robot, tangent, 0.0f, 0.5f);
-    drive(world, robot, tangent, 6.0f, 2.0f);
+    drive(world, robot, tangentRadians, 0.0f, 0.5f);
+    drive(world, robot, tangentRadians, 6.0f, 2.0f);
 
-    const float radius = std::hypot(config.modules[0].x, config.modules[0].y);
-    const float wheelSurfaceSpeed = robot.module(0).wheelVelocity * config.modules[0].wheelRadius;
+    const float radiusMeters = std::hypot(config.modules[0].xMeters, config.modules[0].yMeters);
+    const float wheelSurfaceSpeedMetersPerSec =
+        robot.module(0).wheelVelocityRadPerSec * config.modules[0].wheelRadiusMeters;
     const RobotPose pose = robot.pose();
     std::string diagnostics;
     for (std::size_t m = 0; m < robot.moduleCount(); ++m) {
         const SwerveModuleState& s = robot.module(m);
-        const float contactRadius =
-            std::hypot(s.contactX - pose.position.GetX(), s.contactY - pose.position.GetY());
-        diagnostics += "\n  module " + std::to_string(m) + ": steer " + std::to_string(s.steerAngle) + " (target " +
-                       std::to_string(tangent[m]) + "), wheel " + std::to_string(s.wheelVelocity) +
-                       " rad/s, contact radius " + std::to_string(contactRadius) + " m, slip long " +
-                       std::to_string(s.longitudinalSlip) + " lat " + std::to_string(s.lateralSlip) + " m/s";
+        const float contactRadiusMeters = std::hypot(s.contactXMeters - pose.positionMeters.GetX(),
+                                                     s.contactYMeters - pose.positionMeters.GetY());
+        diagnostics += "\n  module " + std::to_string(m) + ": steer " + std::to_string(s.steerAngleRadians) +
+                       " (target " + std::to_string(tangentRadians[m]) + "), wheel " +
+                       std::to_string(s.wheelVelocityRadPerSec) + " rad/s, contact radius " +
+                       std::to_string(contactRadiusMeters) + " m, slip long " +
+                       std::to_string(s.longitudinalSlipMetersPerSec) + " lat " +
+                       std::to_string(s.lateralSlipMetersPerSec) + " m/s";
     }
-    EXPECT_NEAR(pose.angularVelocity.GetZ(), wheelSurfaceSpeed / radius, 0.05f * wheelSurfaceSpeed / radius)
+    const float expectedYawRateRadPerSec = wheelSurfaceSpeedMetersPerSec / radiusMeters;
+    EXPECT_NEAR(pose.angularVelocityRadPerSec.GetZ(), expectedYawRateRadPerSec, 0.05f * expectedYawRateRadPerSec)
         << diagnostics;
-    EXPECT_NEAR(pose.position.GetX(), 4.0f, 0.05f);
-    EXPECT_NEAR(pose.position.GetY(), 4.0f, 0.05f);
-    EXPECT_GT(robot.continuousYaw(), 1.0) << "yaw is unwrapped and accumulates";
+    EXPECT_NEAR(pose.positionMeters.GetX(), 4.0f, 0.05f);
+    EXPECT_NEAR(pose.positionMeters.GetY(), 4.0f, 0.05f);
+    EXPECT_GT(robot.continuousYawRadians(), 1.0) << "yaw is unwrapped and accumulates";
 }
 
 TEST(SwerveDrive, SteerTracksTargetWithinCurrentLimit) {
@@ -208,10 +219,10 @@ TEST(SwerveDrive, SteerTracksTargetWithinCurrentLimit) {
     SwerveRobot& robot = world.robots().swerve(world.robots().addSwerve(defaultRobot(), 2.0f, 2.0f, 0.0f));
     drive(world, robot, straight(robot, 1.0), 0.0f, 0.5f);
     for (std::size_t m = 0; m < robot.moduleCount(); ++m) {
-        EXPECT_NEAR(robot.module(m).steerAngle, 1.0, 0.02);
-        EXPECT_LE(std::abs(robot.module(m).steerStatorCurrent), 40.0f + 1e-3f);
+        EXPECT_NEAR(robot.module(m).steerAngleRadians, 1.0, 0.02);
+        EXPECT_LE(std::abs(robot.module(m).steerStatorCurrentAmps), 40.0f + 1e-3f);
     }
-    EXPECT_NEAR(robot.pose().position.GetX(), 2.0f, 0.02f) << "steering in place should not move the robot";
+    EXPECT_NEAR(robot.pose().positionMeters.GetX(), 2.0f, 0.02f) << "steering in place should not move the robot";
 }
 
 TEST(SwerveDrive, HeadOnPushingMatchIsBalanced) {
@@ -219,28 +230,30 @@ TEST(SwerveDrive, HeadOnPushingMatchIsBalanced) {
     addCarpet(world);
     SwerveRobot& a = world.robots().swerve(world.robots().addSwerve(defaultRobot(), 3.0f, 4.0f, 0.0f));
     SwerveRobot& b = world.robots().swerve(world.robots().addSwerve(defaultRobot(), 4.2f, 4.0f, JPH::JPH_PI));
-    const int steps = static_cast<int>(3.0f / kControlDt);
+    const int steps = static_cast<int>(3.0f / kControlDtSeconds);
     for (int s = 0; s < steps; ++s) {
         for (SwerveRobot* robot : {&a, &b}) {
             for (std::size_t m = 0; m < robot->moduleCount(); ++m) {
-                const float steer = std::clamp(static_cast<float>(-8.0 * robot->module(m).steerAngle), -12.0f, 12.0f);
-                robot->setModuleVoltages(m, 12.0f, steer);
+                const float steerVolts =
+                    std::clamp(static_cast<float>(-8.0 * robot->module(m).steerAngleRadians), -12.0f, 12.0f);
+                robot->setModuleVoltages(m, 12.0f, steerVolts);
             }
         }
-        world.step(kControlDt, 1);
+        world.step(kControlDtSeconds, 1);
     }
     const RobotPose pa = a.pose();
     const RobotPose pb = b.pose();
-    const float midpoint = 0.5f * (pa.position.GetX() + pb.position.GetX());
-    EXPECT_NEAR(midpoint, 3.6f, 0.1f) << "identical robots should not out-push each other";
-    EXPECT_LT(std::abs(pa.linearVelocity.GetX()), 0.3f);
+    const float midpointMeters = 0.5f * (pa.positionMeters.GetX() + pb.positionMeters.GetX());
+    EXPECT_NEAR(midpointMeters, 3.6f, 0.1f) << "identical robots should not out-push each other";
+    EXPECT_LT(std::abs(pa.linearVelocityMetersPerSec.GetX()), 0.3f);
     // Head-on pushes are unstable: robots may yaw and slide sideways, but must never interpenetrate.
     // Two 0.9 m squares cannot get their centers closer than 0.9 m.
-    const float separation = std::hypot(pb.position.GetX() - pa.position.GetX(), pb.position.GetY() - pa.position.GetY());
-    EXPECT_GT(separation, 0.88f) << "a: (" << pa.position.GetX() << ", " << pa.position.GetY() << ") yaw "
-                                 << a.continuousYaw() << "; b: (" << pb.position.GetX() << ", " << pb.position.GetY()
-                                 << ") yaw " << b.continuousYaw();
-    EXPECT_LT(separation, 1.5f) << "robots should still be touching";
+    const float separationMeters = std::hypot(pb.positionMeters.GetX() - pa.positionMeters.GetX(),
+                                              pb.positionMeters.GetY() - pa.positionMeters.GetY());
+    EXPECT_GT(separationMeters, 0.88f) << "a: (" << pa.positionMeters.GetX() << ", " << pa.positionMeters.GetY()
+                                       << ") yaw " << a.continuousYawRadians() << "; b: (" << pb.positionMeters.GetX()
+                                       << ", " << pb.positionMeters.GetY() << ") yaw " << b.continuousYawRadians();
+    EXPECT_LT(separationMeters, 1.5f) << "robots should still be touching";
 }
 
 TEST(SwerveDrive, WheelSlipMakesOdometryOverestimateDistance) {
@@ -252,37 +265,38 @@ TEST(SwerveDrive, WheelSlipMakesOdometryOverestimateDistance) {
     }
     SwerveRobot& robot = world.robots().swerve(world.robots().addSwerve(config, 1.0f, 4.0f, 0.0f));
     drive(world, robot, straight(robot), 0.0f, 0.3f);
-    const double startWheel = robot.module(0).wheelAngle;
+    const double startWheelRadians = robot.module(0).wheelAngleRadians;
     drive(world, robot, straight(robot), 12.0f, 0.5f);
 
-    const double odometryDistance = (robot.module(0).wheelAngle - startWheel) * config.modules[0].wheelRadius;
-    const double actualDistance = robot.pose().position.GetX() - 1.0;
-    EXPECT_GT(actualDistance, 0.05);
-    EXPECT_GT(odometryDistance, actualDistance * 1.2) << "slip must show up as odometry drift";
+    const double odometryDistanceMeters =
+        (robot.module(0).wheelAngleRadians - startWheelRadians) * config.modules[0].wheelRadiusMeters;
+    const double actualDistanceMeters = robot.pose().positionMeters.GetX() - 1.0;
+    EXPECT_GT(actualDistanceMeters, 0.05);
+    EXPECT_GT(odometryDistanceMeters, actualDistanceMeters * 1.2) << "slip must show up as odometry drift";
 }
 
 TEST(SwerveDrive, BrownoutCutsMotorPower) {
     World world = makeWorld();
     addCarpet(world);
     SwerveDriveConfig config = defaultRobot();
-    config.battery.internalResistance = 0.05f;
+    config.battery.internalResistanceOhms = 0.05f;
     for (SwerveModuleConfig& m : config.modules) {
         m.driveCurrentLimits = CurrentLimits{}; // unlimited stall: 4 x ~366 A would sag far below 6.75 V
     }
     SwerveRobot& robot = world.robots().swerve(world.robots().addSwerve(config, 1.0f, 4.0f, 0.0f));
     bool sawBrownout = false;
     bool sawDisabledStep = false;
-    const int steps = static_cast<int>(1.0f / kControlDt);
+    const int steps = static_cast<int>(1.0f / kControlDtSeconds);
     for (int s = 0; s < steps; ++s) {
         for (std::size_t m = 0; m < robot.moduleCount(); ++m) {
             robot.setModuleVoltages(m, 12.0f, 0.0f);
         }
         const bool brownoutBeforeStep = robot.battery().brownout();
-        world.step(kControlDt, 1);
+        world.step(kControlDtSeconds, 1);
         sawBrownout |= robot.battery().brownout();
         if (brownoutBeforeStep) {
             // The whole step ran browned out: outputs must have been disabled.
-            ASSERT_FLOAT_EQ(robot.module(0).driveStatorCurrent, 0.0f) << "outputs disabled during brownout";
+            ASSERT_FLOAT_EQ(robot.module(0).driveStatorCurrentAmps, 0.0f) << "outputs disabled during brownout";
             sawDisabledStep = true;
         }
     }
@@ -295,12 +309,13 @@ TEST(SwerveDrive, RandomizedDrivingStaysFinite) {
         World world = makeWorld();
         loadFieldJson(world, test::readRepoFile("fields/test-flat/field.json"));
         const PieceTypeId fuel = *world.pieceTypes().find("fuel");
-        std::vector<float> xyz;
+        std::vector<float> positionsXyzMeters;
         for (int i = 0; i < 60; ++i) {
-            xyz.insert(xyz.end(), {6.0f + 0.2f * static_cast<float>(i % 10), 3.0f + 0.2f * static_cast<float>(i / 10),
-                                   test::kFuelRadius});
+            positionsXyzMeters.insert(positionsXyzMeters.end(),
+                                      {6.0f + 0.2f * static_cast<float>(i % 10),
+                                       3.0f + 0.2f * static_cast<float>(i / 10), test::kFuelRadiusMeters});
         }
-        world.pieces().spawn(fuel, xyz, {}, {});
+        world.pieces().spawn(fuel, positionsXyzMeters, {}, {});
         SwerveRobot& a = world.robots().swerve(world.robots().addSwerve(defaultRobot(), 4.0f, 4.0f, 0.0f));
         SwerveRobot& b = world.robots().swerve(world.robots().addSwerve(defaultRobot(), 9.0f, 4.0f, 1.0f));
 
@@ -317,11 +332,12 @@ TEST(SwerveDrive, RandomizedDrivingStaysFinite) {
             world.step(0.020, substeps);
             for (SwerveRobot* robot : {&a, &b}) {
                 const RobotPose pose = robot->pose();
-                ASSERT_FALSE(pose.position.IsNaN() || pose.linearVelocity.IsNaN()) << "substeps " << substeps;
-                ASSERT_LT(pose.position.GetZ(), 1.0f) << "robot launched, substeps " << substeps;
+                ASSERT_FALSE(pose.positionMeters.IsNaN() || pose.linearVelocityMetersPerSec.IsNaN())
+                    << "substeps " << substeps;
+                ASSERT_LT(pose.positionMeters.GetZ(), 1.0f) << "robot launched, substeps " << substeps;
                 for (std::size_t m = 0; m < robot->moduleCount(); ++m) {
-                    ASSERT_TRUE(std::isfinite(robot->module(m).wheelVelocity));
-                    ASSERT_TRUE(std::isfinite(robot->module(m).steerAngle));
+                    ASSERT_TRUE(std::isfinite(robot->module(m).wheelVelocityRadPerSec));
+                    ASSERT_TRUE(std::isfinite(robot->module(m).steerAngleRadians));
                 }
             }
         }
@@ -331,13 +347,16 @@ TEST(SwerveDrive, RandomizedDrivingStaysFinite) {
 TEST(SwerveDrive, ConfigValidation) {
     World world = makeWorld();
     SwerveDriveConfig config = defaultRobot();
-    config.modules[0].x = 2.0f;
+    config.modules[0].xMeters = 2.0f;
     EXPECT_THROW(world.robots().addSwerve(config, 0, 0, 0), std::invalid_argument);
     config = defaultRobot();
     config.modules.clear();
     EXPECT_THROW(world.robots().addSwerve(config, 0, 0, 0), std::invalid_argument);
     config = defaultRobot();
     config.modules[1].tire.kineticFriction = 2.0f;
+    EXPECT_THROW(world.robots().addSwerve(config, 0, 0, 0), std::invalid_argument);
+    config = defaultRobot();
+    config.modules[2].couplingGearRatio = NAN;
     EXPECT_THROW(world.robots().addSwerve(config, 0, 0, 0), std::invalid_argument);
     config = defaultRobot();
     config.bumperMaterial = 60;

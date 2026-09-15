@@ -6,8 +6,8 @@ package org.frcsim;
  * <p>Capacities are fixed at creation; the simulation never allocates while stepping.
  */
 public final class WorldConfig {
-  /** Standard gravity in m/s². */
-  public static final double STANDARD_GRAVITY = 9.80665;
+  /** Standard gravity. */
+  public static final double STANDARD_GRAVITY_METERS_PER_SEC_SQ = 9.80665;
 
   /** Maximum number of worker threads accepted by the native library. */
   public static final int MAX_WORKER_THREADS = 64;
@@ -23,12 +23,12 @@ public final class WorldConfig {
   private final int maxContactConstraints;
   private final int workerThreads;
   private final int tempAllocatorBytes;
-  private final double gravity;
+  private final double gravityMetersPerSecSq;
   private final int substeps;
   private final int maxPieces;
-  private final double minVelocityForRestitution;
-  private final double timeBeforeSleep;
-  private final double sleepVelocityThreshold;
+  private final double minVelocityForRestitutionMetersPerSec;
+  private final double timeBeforeSleepSeconds;
+  private final double sleepVelocityThresholdMetersPerSec;
   private final int solverVelocitySteps;
   private final int solverPositionSteps;
 
@@ -43,16 +43,17 @@ public final class WorldConfig {
     if (b.tempAllocatorBytes < 1024 * 1024) {
       throw new IllegalArgumentException("tempAllocatorBytes must be >= 1 MiB");
     }
-    requireNonNegative("gravity", b.gravity);
+    requireNonNegative("gravityMetersPerSecSq", b.gravityMetersPerSecSq);
     if (b.substeps < 1 || b.substeps > MAX_SUBSTEPS) {
       throw new IllegalArgumentException("substeps must be in 1.." + MAX_SUBSTEPS);
     }
     if (b.maxPieces < 1 || b.maxPieces > b.maxBodies) {
       throw new IllegalArgumentException("maxPieces must be in 1..maxBodies");
     }
-    requireNonNegative("minVelocityForRestitution", b.minVelocityForRestitution);
-    requireNonNegative("timeBeforeSleep", b.timeBeforeSleep);
-    requireNonNegative("sleepVelocityThreshold", b.sleepVelocityThreshold);
+    requireNonNegative(
+        "minVelocityForRestitutionMetersPerSec", b.minVelocityForRestitutionMetersPerSec);
+    requireNonNegative("timeBeforeSleepSeconds", b.timeBeforeSleepSeconds);
+    requireNonNegative("sleepVelocityThresholdMetersPerSec", b.sleepVelocityThresholdMetersPerSec);
     if (b.solverVelocitySteps < 1 || b.solverVelocitySteps > MAX_SOLVER_STEPS) {
       throw new IllegalArgumentException("solverVelocitySteps must be in 1.." + MAX_SOLVER_STEPS);
     }
@@ -64,12 +65,12 @@ public final class WorldConfig {
     maxContactConstraints = b.maxContactConstraints;
     workerThreads = b.workerThreads;
     tempAllocatorBytes = b.tempAllocatorBytes;
-    gravity = b.gravity;
+    gravityMetersPerSecSq = b.gravityMetersPerSecSq;
     substeps = b.substeps;
     maxPieces = b.maxPieces;
-    minVelocityForRestitution = b.minVelocityForRestitution;
-    timeBeforeSleep = b.timeBeforeSleep;
-    sleepVelocityThreshold = b.sleepVelocityThreshold;
+    minVelocityForRestitutionMetersPerSec = b.minVelocityForRestitutionMetersPerSec;
+    timeBeforeSleepSeconds = b.timeBeforeSleepSeconds;
+    sleepVelocityThresholdMetersPerSec = b.sleepVelocityThresholdMetersPerSec;
     solverVelocitySteps = b.solverVelocitySteps;
     solverPositionSteps = b.solverPositionSteps;
   }
@@ -105,12 +106,12 @@ public final class WorldConfig {
     b.maxContactConstraints = maxContactConstraints;
     b.workerThreads = workerThreads;
     b.tempAllocatorBytes = tempAllocatorBytes;
-    b.gravity = gravity;
+    b.gravityMetersPerSecSq = gravityMetersPerSecSq;
     b.substeps = substeps;
     b.maxPieces = maxPieces;
-    b.minVelocityForRestitution = minVelocityForRestitution;
-    b.timeBeforeSleep = timeBeforeSleep;
-    b.sleepVelocityThreshold = sleepVelocityThreshold;
+    b.minVelocityForRestitutionMetersPerSec = minVelocityForRestitutionMetersPerSec;
+    b.timeBeforeSleepSeconds = timeBeforeSleepSeconds;
+    b.sleepVelocityThresholdMetersPerSec = sleepVelocityThresholdMetersPerSec;
     b.solverVelocitySteps = solverVelocitySteps;
     b.solverPositionSteps = solverPositionSteps;
     return b;
@@ -153,21 +154,21 @@ public final class WorldConfig {
   }
 
   /**
-   * Per-step native scratch memory in bytes.
+   * Per-step native scratch memory.
    *
-   * @return scratch bytes
+   * @return bytes
    */
   public int tempAllocatorBytes() {
     return tempAllocatorBytes;
   }
 
   /**
-   * Gravity magnitude in m/s², applied along -Z.
+   * Gravity magnitude, applied along -Z.
    *
-   * @return gravity
+   * @return m/s²
    */
-  public double gravity() {
-    return gravity;
+  public double gravityMetersPerSecSq() {
+    return gravityMetersPerSecSq;
   }
 
   /**
@@ -189,30 +190,30 @@ public final class WorldConfig {
   }
 
   /**
-   * Impacts slower than this (m/s) do not bounce.
+   * Impacts slower than this do not bounce.
    *
-   * @return threshold in m/s
+   * @return m/s
    */
-  public double minVelocityForRestitution() {
-    return minVelocityForRestitution;
+  public double minVelocityForRestitutionMetersPerSec() {
+    return minVelocityForRestitutionMetersPerSec;
   }
 
   /**
-   * Seconds a body must be at rest before sleeping.
+   * Time a body must be at rest before sleeping.
    *
    * @return seconds
    */
-  public double timeBeforeSleep() {
-    return timeBeforeSleep;
+  public double timeBeforeSleepSeconds() {
+    return timeBeforeSleepSeconds;
   }
 
   /**
-   * Velocity (m/s) below which a body counts as at rest.
+   * Velocity below which a body counts as at rest.
    *
-   * @return threshold in m/s
+   * @return m/s
    */
-  public double sleepVelocityThreshold() {
-    return sleepVelocityThreshold;
+  public double sleepVelocityThresholdMetersPerSec() {
+    return sleepVelocityThresholdMetersPerSec;
   }
 
   /**
@@ -243,8 +244,8 @@ public final class WorldConfig {
         + workerThreads
         + ", substeps="
         + substeps
-        + ", gravity="
-        + gravity
+        + ", gravityMetersPerSecSq="
+        + gravityMetersPerSecSq
         + "}";
   }
 
@@ -267,12 +268,12 @@ public final class WorldConfig {
     private int maxContactConstraints = 16384;
     private int workerThreads = 2;
     private int tempAllocatorBytes = 32 * 1024 * 1024;
-    private double gravity = STANDARD_GRAVITY;
+    private double gravityMetersPerSecSq = STANDARD_GRAVITY_METERS_PER_SEC_SQ;
     private int substeps = 5;
     private int maxPieces = 1024;
-    private double minVelocityForRestitution = 0.2;
-    private double timeBeforeSleep = 0.5;
-    private double sleepVelocityThreshold = 0.03;
+    private double minVelocityForRestitutionMetersPerSec = 0.2;
+    private double timeBeforeSleepSeconds = 0.5;
+    private double sleepVelocityThresholdMetersPerSec = 0.03;
     private int solverVelocitySteps = 10;
     private int solverPositionSteps = 2;
 
@@ -334,13 +335,13 @@ public final class WorldConfig {
     }
 
     /**
-     * Sets gravity magnitude (m/s², along -Z).
+     * Sets gravity magnitude (along -Z).
      *
-     * @param value gravity
+     * @param value m/s²
      * @return this builder
      */
-    public Builder gravity(double value) {
-      gravity = value;
+    public Builder gravityMetersPerSecSq(double value) {
+      gravityMetersPerSecSq = value;
       return this;
     }
 
@@ -367,35 +368,35 @@ public final class WorldConfig {
     }
 
     /**
-     * Sets the minimum impact speed (m/s) that bounces.
+     * Sets the minimum impact speed that bounces.
      *
-     * @param value threshold in m/s
+     * @param value m/s
      * @return this builder
      */
-    public Builder minVelocityForRestitution(double value) {
-      minVelocityForRestitution = value;
+    public Builder minVelocityForRestitutionMetersPerSec(double value) {
+      minVelocityForRestitutionMetersPerSec = value;
       return this;
     }
 
     /**
-     * Sets seconds at rest before sleeping.
+     * Sets time at rest before sleeping.
      *
      * @param value seconds
      * @return this builder
      */
-    public Builder timeBeforeSleep(double value) {
-      timeBeforeSleep = value;
+    public Builder timeBeforeSleepSeconds(double value) {
+      timeBeforeSleepSeconds = value;
       return this;
     }
 
     /**
-     * Sets the at-rest velocity threshold (m/s).
+     * Sets the at-rest velocity threshold.
      *
-     * @param value threshold
+     * @param value m/s
      * @return this builder
      */
-    public Builder sleepVelocityThreshold(double value) {
-      sleepVelocityThreshold = value;
+    public Builder sleepVelocityThresholdMetersPerSec(double value) {
+      sleepVelocityThresholdMetersPerSec = value;
       return this;
     }
 

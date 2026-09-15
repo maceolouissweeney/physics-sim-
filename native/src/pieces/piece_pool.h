@@ -43,14 +43,15 @@ public:
     PiecePool(const PiecePool&) = delete;
     PiecePool& operator=(const PiecePool&) = delete;
 
-    /// Spawns `positionsXyz.size() / 3` pieces of one type in state OnField.
-    /// `velocitiesXyz` may be empty (at rest) or match positions. `outIndices` may be empty or have room
+    /// Spawns `positionsXyzMeters.size() / 3` pieces of one type in state OnField.
+    /// `velocitiesXyzMetersPerSec` may be empty (at rest) or match positions. `outIndices` may be empty or have room
     /// for every spawned index. All-or-nothing: throws before changing anything if capacity is short.
-    void spawn(PieceTypeId type, std::span<const float> positionsXyz, std::span<const float> velocitiesXyz,
-               std::span<std::uint32_t> outIndices);
+    void spawn(PieceTypeId type, std::span<const float> positionsXyzMeters,
+               std::span<const float> velocitiesXyzMetersPerSec, std::span<std::uint32_t> outIndices);
 
     /// Convenience single-piece spawn; returns the piece index.
-    std::uint32_t spawnOne(PieceTypeId type, JPH::Vec3 position, JPH::Vec3 velocity = JPH::Vec3::sZero());
+    std::uint32_t spawnOne(PieceTypeId type, JPH::Vec3 positionMeters,
+                           JPH::Vec3 velocityMetersPerSec = JPH::Vec3::sZero());
 
     /// Any spawned state -> Inactive. The index (and its body) may be reused by a later spawn of the same type.
     void despawn(std::uint32_t index);
@@ -60,10 +61,11 @@ public:
     void setState(std::uint32_t index, PieceState state);
 
     /// Places a spawned piece and puts it OnField (adding its body if needed).
-    void teleport(std::uint32_t index, JPH::Vec3 position, JPH::Vec3 linearVelocity, JPH::Vec3 angularVelocity);
+    void teleport(std::uint32_t index, JPH::Vec3 positionMeters, JPH::Vec3 linearVelocityMetersPerSec,
+                  JPH::Vec3 angularVelocityRadPerSec);
 
     /// Once per World::step after all substeps: refresh the output positions and mark out-of-bounds pieces.
-    void postStep(const JPH::AABox& bounds);
+    void postStep(const JPH::AABox& boundsMeters);
 
     [[nodiscard]] std::uint32_t capacity() const { return m_capacity; }
     /// Number of indices ever used; outputs are valid for [0, highWater()).
@@ -75,17 +77,17 @@ public:
     [[nodiscard]] PieceState state(std::uint32_t index) const;
     [[nodiscard]] PieceTypeId type(std::uint32_t index) const;
     [[nodiscard]] JPH::BodyID body(std::uint32_t index) const;
-    [[nodiscard]] JPH::Vec3 position(std::uint32_t index) const;
+    [[nodiscard]] JPH::Vec3 positionMeters(std::uint32_t index) const;
 
-    /// Output buffers, stable for the pool's lifetime. positions: 3 floats per index; states: PieceState bytes.
-    [[nodiscard]] const float* positionsData() const { return m_positions.data(); }
+    /// Output buffers, stable for the pool's lifetime. positions: 3 floats (meters) per index; states: PieceState bytes.
+    [[nodiscard]] const float* positionsMetersData() const { return m_positionsMeters.data(); }
     [[nodiscard]] const std::uint8_t* statesData() const { return m_states.data(); }
 
 private:
-    JPH::BodyID createBody(PieceTypeId type, std::uint32_t index, JPH::Vec3 position);
+    JPH::BodyID createBody(PieceTypeId type, std::uint32_t index, JPH::Vec3 positionMeters);
     void checkSpawned(std::uint32_t index) const;
     void transition(std::uint32_t index, PieceState next);
-    void writePosition(std::uint32_t index, JPH::RVec3 position);
+    void writePosition(std::uint32_t index, JPH::RVec3 positionMeters);
 
     JPH::PhysicsSystem& m_physics;
     const PieceTypeRegistry& m_types;
@@ -96,7 +98,7 @@ private:
     std::vector<JPH::BodyID> m_bodies;
     std::vector<PieceTypeId> m_typeOf;
     std::vector<std::uint8_t> m_states;
-    std::vector<float> m_positions;
+    std::vector<float> m_positionsMeters;
     std::vector<std::vector<std::uint32_t>> m_freeByType;
     std::array<std::uint32_t, kPieceStateCount> m_stateCounts{};
     std::vector<JPH::BodyID> m_scratchBodies;

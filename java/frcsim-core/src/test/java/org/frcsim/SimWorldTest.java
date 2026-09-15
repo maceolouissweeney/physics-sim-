@@ -23,7 +23,7 @@ class SimWorldTest {
   void statsLayoutMatchesNative() {
     FrcSim.ensureLoaded();
     int[] expected = {
-      WorldStats.SIZE,
+      WorldStats.SIZE_BYTES,
       WorldStats.OFFSET_TIME_SECONDS,
       WorldStats.OFFSET_LAST_STEP_WALL_SECONDS,
       WorldStats.OFFSET_SUBSTEP_COUNT,
@@ -80,7 +80,7 @@ class SimWorldTest {
     assertDoesNotThrow(world::close);
     assertThrows(IllegalStateException.class, () -> world.step(0.02));
     assertThrows(IllegalStateException.class, world::timeSeconds);
-    assertThrows(IllegalStateException.class, () -> pieces.x(0));
+    assertThrows(IllegalStateException.class, () -> pieces.xMeters(0));
     assertThrows(IllegalStateException.class, stats::activeBodies);
     assertThrows(IllegalStateException.class, () -> world.materials().find("carpet"));
   }

@@ -2,43 +2,43 @@ package org.frcsim;
 
 /**
  * DC motor parameters in WPILib {@code DCMotor} form. {@code count} identical motors drive one
- * gearbox. Presets use WPILib 2026 constants; rotor inertias are estimates (not published by
- * vendors).
+ * gearbox. Presets are CTRE motors with WPILib 2026 constants; rotor inertias are estimates (not
+ * published by vendors).
  *
- * @param nominalVoltage nominal voltage (V)
- * @param stallTorque stall torque of one motor (N·m)
- * @param stallCurrent stall current of one motor (A)
- * @param freeCurrent free current of one motor (A)
- * @param freeSpeed free speed (rad/s)
+ * @param nominalVolts nominal voltage
+ * @param stallTorqueNewtonMeters stall torque of one motor
+ * @param stallCurrentAmps stall current of one motor
+ * @param freeCurrentAmps free current of one motor
+ * @param freeSpeedRadPerSec free speed
  * @param count number of motors
- * @param rotorInertia rotor inertia of one motor (kg·m²)
+ * @param rotorInertiaKgMetersSq rotor inertia of one motor
  */
 public record DcMotorSpec(
-    double nominalVoltage,
-    double stallTorque,
-    double stallCurrent,
-    double freeCurrent,
-    double freeSpeed,
+    double nominalVolts,
+    double stallTorqueNewtonMeters,
+    double stallCurrentAmps,
+    double freeCurrentAmps,
+    double freeSpeedRadPerSec,
     int count,
-    double rotorInertia) {
+    double rotorInertiaKgMetersSq) {
 
-  private static final double RPM_TO_RAD_PER_SEC = 2.0 * Math.PI / 60.0;
+  private static final double RAD_PER_SEC_PER_RPM = 2.0 * Math.PI / 60.0;
 
   private static DcMotorSpec preset(
-      double stallTorque,
-      double stallCurrent,
-      double freeCurrent,
+      double stallTorqueNewtonMeters,
+      double stallCurrentAmps,
+      double freeCurrentAmps,
       double freeSpeedRpm,
       int count,
-      double rotorInertia) {
+      double rotorInertiaKgMetersSq) {
     return new DcMotorSpec(
         12.0,
-        stallTorque,
-        stallCurrent,
-        freeCurrent,
-        freeSpeedRpm * RPM_TO_RAD_PER_SEC,
+        stallTorqueNewtonMeters,
+        stallCurrentAmps,
+        freeCurrentAmps,
+        freeSpeedRpm * RAD_PER_SEC_PER_RPM,
         count,
-        rotorInertia);
+        rotorInertiaKgMetersSq);
   }
 
   /**
@@ -102,23 +102,13 @@ public record DcMotorSpec(
   }
 
   /**
-   * REV NEO.
+   * CTRE Minion (driven by a Talon FXS).
    *
    * @param count number of motors
    * @return spec
    */
-  public static DcMotorSpec neo(int count) {
-    return preset(2.6, 105, 1.8, 5676, count, 4.0e-5);
-  }
-
-  /**
-   * REV NEO Vortex.
-   *
-   * @param count number of motors
-   * @return spec
-   */
-  public static DcMotorSpec neoVortex(int count) {
-    return preset(3.60, 211, 3.6, 6784, count, 5.0e-5);
+  public static DcMotorSpec minion(int count) {
+    return preset(3.17, 211, 2, 7704, count, 3.5e-5);
   }
 
   /**
@@ -127,18 +117,44 @@ public record DcMotorSpec(
    * @param value rotor inertia of one motor (kg·m²)
    * @return modified copy
    */
-  public DcMotorSpec withRotorInertia(double value) {
+  public DcMotorSpec withRotorInertiaKgMetersSq(double value) {
     return new DcMotorSpec(
-        nominalVoltage, stallTorque, stallCurrent, freeCurrent, freeSpeed, count, value);
+        nominalVolts,
+        stallTorqueNewtonMeters,
+        stallCurrentAmps,
+        freeCurrentAmps,
+        freeSpeedRadPerSec,
+        count,
+        value);
   }
 
+  /**
+   * Returns a copy driving a different number of motors.
+   *
+   * @param value number of motors
+   * @return modified copy
+   */
+  public DcMotorSpec withCount(int value) {
+    return new DcMotorSpec(
+        nominalVolts,
+        stallTorqueNewtonMeters,
+        stallCurrentAmps,
+        freeCurrentAmps,
+        freeSpeedRadPerSec,
+        value,
+        rotorInertiaKgMetersSq);
+  }
+
+  /** Values in the packed JNI representation. */
+  static final int PACKED_SIZE = 7;
+
   void packInto(float[] out, int offset) {
-    out[offset] = (float) nominalVoltage;
-    out[offset + 1] = (float) stallTorque;
-    out[offset + 2] = (float) stallCurrent;
-    out[offset + 3] = (float) freeCurrent;
-    out[offset + 4] = (float) freeSpeed;
+    out[offset] = (float) nominalVolts;
+    out[offset + 1] = (float) stallTorqueNewtonMeters;
+    out[offset + 2] = (float) stallCurrentAmps;
+    out[offset + 3] = (float) freeCurrentAmps;
+    out[offset + 4] = (float) freeSpeedRadPerSec;
     out[offset + 5] = count;
-    out[offset + 6] = (float) rotorInertia;
+    out[offset + 6] = (float) rotorInertiaKgMetersSq;
   }
 }

@@ -23,13 +23,13 @@ public:
     KinematicBodies(const KinematicBodies&) = delete;
     KinematicBodies& operator=(const KinematicBodies&) = delete;
 
-    std::uint32_t addBox(JPH::Vec3 center, JPH::Vec3 halfExtents, JPH::Quat rotation, MaterialId material);
+    std::uint32_t addBox(JPH::Vec3 centerMeters, JPH::Vec3 halfExtentsMeters, JPH::Quat rotation, MaterialId material);
 
     /// Sets the velocity so the body reaches the target pose at the end of the next step of dtSeconds.
     /// The velocity persists afterwards; call again (or with the current pose) to stop.
-    void moveTo(std::uint32_t index, JPH::Vec3 position, JPH::Quat rotation, float dtSeconds);
+    void moveTo(std::uint32_t index, JPH::Vec3 positionMeters, JPH::Quat rotation, float dtSeconds);
 
-    [[nodiscard]] JPH::Vec3 position(std::uint32_t index) const;
+    [[nodiscard]] JPH::Vec3 positionMeters(std::uint32_t index) const;
     [[nodiscard]] std::size_t size() const { return m_bodies.size(); }
 
 private:

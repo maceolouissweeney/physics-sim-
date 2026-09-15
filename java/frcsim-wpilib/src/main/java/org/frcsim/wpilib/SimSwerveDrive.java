@@ -28,7 +28,8 @@ import org.frcsim.SwerveRobot;
 public final class SimSwerveDrive {
   private final SwerveRobot robot;
   private final double[] driveGearRatios;
-  private final double[] wheelRadii;
+  private final double[] couplingGearRatios;
+  private final double[] wheelRadiiMeters;
   private final Translation2d[] moduleTranslations;
 
   /**
@@ -45,13 +46,15 @@ public final class SimSwerveDrive {
       throw new IllegalArgumentException("config has a different module count than the robot");
     }
     driveGearRatios = new double[n];
-    wheelRadii = new double[n];
+    couplingGearRatios = new double[n];
+    wheelRadiiMeters = new double[n];
     moduleTranslations = new Translation2d[n];
     for (int m = 0; m < n; m++) {
       SwerveModuleConfig module = config.modules.get(m);
       driveGearRatios[m] = module.driveGearRatio;
-      wheelRadii[m] = module.wheelRadius;
-      moduleTranslations[m] = new Translation2d(module.x, module.y);
+      couplingGearRatios[m] = module.couplingGearRatio;
+      wheelRadiiMeters[m] = module.wheelRadiusMeters;
+      moduleTranslations[m] = new Translation2d(module.xMeters, module.yMeters);
     }
   }
 
@@ -100,8 +103,8 @@ public final class SimSwerveDrive {
    * @param driveVolts drive motor voltage
    * @param steerVolts steer motor voltage
    */
-  public void setModuleVoltages(int module, double driveVolts, double steerVolts) {
-    robot.setModuleVoltages(module, driveVolts, steerVolts);
+  public void setModuleCommandVolts(int module, double driveVolts, double steerVolts) {
+    robot.setModuleCommandVolts(module, driveVolts, steerVolts);
   }
 
   /**
@@ -112,11 +115,11 @@ public final class SimSwerveDrive {
    * @param steer steer motor voltage
    */
   public void setModuleVoltages(int module, Voltage drive, Voltage steer) {
-    robot.setModuleVoltages(module, drive.in(Units.Volts), steer.in(Units.Volts));
+    robot.setModuleCommandVolts(module, drive.in(Units.Volts), steer.in(Units.Volts));
   }
 
   /**
-   * Teleports the robot to a pose, at rest.
+   * Teleports the robot to a pose, at rest, and re-zeros the gyro to its heading.
    *
    * @param pose new pose
    */
@@ -132,7 +135,7 @@ public final class SimSwerveDrive {
    * @return pose
    */
   public Pose2d getPose() {
-    return new Pose2d(robot.x(), robot.y(), new Rotation2d(robot.yawRadians()));
+    return new Pose2d(robot.xMeters(), robot.yMeters(), new Rotation2d(robot.yawRadians()));
   }
 
   /**
@@ -142,7 +145,7 @@ public final class SimSwerveDrive {
    */
   public Pose3d getPose3d() {
     return new Pose3d(
-        new Translation3d(robot.x(), robot.y(), robot.z()),
+        new Translation3d(robot.xMeters(), robot.yMeters(), robot.zMeters()),
         new Rotation3d(new Quaternion(robot.qw(), robot.qx(), robot.qy(), robot.qz())));
   }
 
@@ -152,10 +155,15 @@ public final class SimSwerveDrive {
    * @return speeds
    */
   public ChassisSpeeds getRobotRelativeSpeeds() {
-    double cos = Math.cos(robot.yawRadians());
-    double sin = Math.sin(robot.yawRadians());
+    double yawRadians = robot.yawRadians();
+    double cos = Math.cos(yawRadians);
+    double sin = Math.sin(yawRadians);
+    double vxMetersPerSec = robot.vxMetersPerSec();
+    double vyMetersPerSec = robot.vyMetersPerSec();
     return new ChassisSpeeds(
-        cos * robot.vx() + sin * robot.vy(), -sin * robot.vx() + cos * robot.vy(), robot.wz());
+        cos * vxMetersPerSec + sin * vyMetersPerSec,
+        -sin * vxMetersPerSec + cos * vyMetersPerSec,
+        robot.wzRadPerSec());
   }
 
   /**
@@ -164,7 +172,7 @@ public final class SimSwerveDrive {
    * @return speeds
    */
   public ChassisSpeeds getFieldRelativeSpeeds() {
-    return new ChassisSpeeds(robot.vx(), robot.vy(), robot.wz());
+    return new ChassisSpeeds(robot.vxMetersPerSec(), robot.vyMetersPerSec(), robot.wzRadPerSec());
   }
 
   // ---- Sensors ------------------------------------------------------------------------------
@@ -181,19 +189,19 @@ public final class SimSwerveDrive {
   /**
    * Continuous gyro yaw, like a Pigeon 2's accumulated yaw.
    *
-   * @return yaw in radians
+   * @return radians
    */
   public double getGyroYawRadians() {
     return robot.gyroYawRadians();
   }
 
   /**
-   * Gyro yaw rate.
+   * Gyro yaw rate, counterclockwise positive.
    *
-   * @return rad/s, counterclockwise positive
+   * @return rad/s
    */
-  public double getGyroYawRateRadiansPerSecond() {
-    return robot.wz();
+  public double getGyroYawRateRadPerSec() {
+    return robot.wzRadPerSec();
   }
 
   /**
@@ -220,15 +228,19 @@ public final class SimSwerveDrive {
   }
 
   /**
-   * Fills existing module state objects (reuses the arrays; each angle is a new Rotation2d).
+   * Fills existing module state objects. The wheel speed removes the steering coupling term, like
+   * CTRE's odometry does. Each angle is a new Rotation2d (WPILib rotations are immutable).
    *
    * @param states one state per module
    */
   public void updateModuleStates(SwerveModuleState[] states) {
     for (int m = 0; m < robot.moduleCount(); m++) {
-      states[m].speedMetersPerSecond =
-          robot.driveRotorVelocity(m) / driveGearRatios[m] * wheelRadii[m];
-      states[m].angle = new Rotation2d(robot.steerAngle(m));
+      double wheelRadPerSec =
+          (robot.driveRotorVelocityRadPerSec(m)
+                  - robot.steerVelocityRadPerSec(m) * couplingGearRatios[m])
+              / driveGearRatios[m];
+      states[m].speedMetersPerSecond = wheelRadPerSec * wheelRadiiMeters[m];
+      states[m].angle = new Rotation2d(robot.steerAngleRadians(m));
     }
   }
 
@@ -247,15 +259,19 @@ public final class SimSwerveDrive {
   }
 
   /**
-   * Fills existing module position objects (reuses the arrays; each angle is a new Rotation2d).
+   * Fills existing module position objects. The distance removes the steering coupling term, like
+   * CTRE's odometry does. Each angle is a new Rotation2d (WPILib rotations are immutable).
    *
    * @param positions one position per module
    */
   public void updateModulePositions(SwerveModulePosition[] positions) {
     for (int m = 0; m < robot.moduleCount(); m++) {
-      positions[m].distanceMeters =
-          robot.driveRotorPosition(m) / driveGearRatios[m] * wheelRadii[m];
-      positions[m].angle = new Rotation2d(robot.steerAngle(m));
+      double steerAngleRadians = robot.steerAngleRadians(m);
+      double wheelRadians =
+          (robot.driveRotorPositionRadians(m) - steerAngleRadians * couplingGearRatios[m])
+              / driveGearRatios[m];
+      positions[m].distanceMeters = wheelRadians * wheelRadiiMeters[m];
+      positions[m].angle = new Rotation2d(steerAngleRadians);
     }
   }
 
@@ -264,7 +280,7 @@ public final class SimSwerveDrive {
    *
    * @return volts
    */
-  public double getBatteryVoltage() {
-    return robot.batteryVoltage();
+  public double getBatteryVolts() {
+    return robot.batteryVolts();
   }
 }

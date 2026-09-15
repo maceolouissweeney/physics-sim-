@@ -30,15 +30,15 @@ struct WorldConfig {
     /// Default 2: fastest measured setting on a 4-core laptop (decision D24, docs/perf/phase1.md).
     std::int32_t workerThreads = 2;
     std::uint32_t tempAllocatorBytes = 32u * 1024u * 1024u;
-    double gravityZ = -9.80665;
+    double gravityZMetersPerSecSq = -9.80665;
     /// Game piece capacity (must be <= maxBodies).
     std::uint32_t maxPieces = 1024;
-    /// Impacts slower than this (m/s) get no bounce (decision D15).
-    float minVelocityForRestitution = 0.2f;
-    /// Seconds a body must stay below sleepVelocityThreshold before sleeping.
-    float timeBeforeSleep = 0.5f;
-    /// Point velocity (m/s) below which a body may sleep.
-    float sleepVelocityThreshold = 0.03f;
+    /// Impacts slower than this get no bounce (decision D15).
+    float minVelocityForRestitutionMetersPerSec = 0.2f;
+    /// Time a body must stay below sleepVelocityThresholdMetersPerSec before sleeping.
+    float timeBeforeSleepSeconds = 0.5f;
+    /// Point velocity below which a body may sleep.
+    float sleepVelocityThresholdMetersPerSec = 0.03f;
     std::uint32_t solverVelocitySteps = 10;
     std::uint32_t solverPositionSteps = 2;
 };
@@ -68,8 +68,8 @@ public:
     World(const World&) = delete;
     World& operator=(const World&) = delete;
 
-    /// Advance by dt seconds using `substeps` equal fixed steps (one collision step each).
-    void step(double dt, int substeps);
+    /// Advance by dtSeconds using `substeps` equal fixed steps (one collision step each).
+    void step(double dtSeconds, int substeps);
 
     /// Rebuild the broadphase trees; call after adding many bodies. step() does this before the first step.
     void optimizeBroadPhase();

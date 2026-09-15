@@ -13,8 +13,8 @@
 namespace frcsim {
 
 /**
- * Force-limited dynamic boxes that track a target planar velocity: robot stand-ins until the swerve
- * model exists (Phase 2), and "defense bot" style obstacles in tests.
+ * Force-limited dynamic boxes that track a target planar velocity: simple "defense bot" obstacles and
+ * benchmark plows that are cheaper than a full swerve robot.
  *
  * Unlike kinematic bodies, driven bodies have finite mass and a maximum drive force (think traction
  * limit mu*m*g), so they stall against piles and walls instead of crushing through them. Each substep a
@@ -25,12 +25,12 @@ namespace frcsim {
 class DrivenBodies final : public JPH::PhysicsStepListener {
 public:
     struct BoxDesc {
-        JPH::Vec3 center = JPH::Vec3::sZero();
-        JPH::Vec3 halfExtents = JPH::Vec3(0.45f, 0.45f, 0.08f);
-        float yaw = 0.0f;         ///< rad
-        float mass = 60.0f;       ///< kg
-        float maxForce = 590.0f;  ///< N, e.g. mu * m * g
-        float maxTorque = 250.0f; ///< N*m
+        JPH::Vec3 centerMeters = JPH::Vec3::sZero();
+        JPH::Vec3 halfExtentsMeters = JPH::Vec3(0.45f, 0.45f, 0.08f);
+        float yawRadians = 0.0f;
+        float massKg = 60.0f;
+        float maxForceNewtons = 590.0f;       ///< e.g. mu * m * g
+        float maxTorqueNewtonMeters = 250.0f;
         MaterialId material = MaterialTable::kDefault;
     };
 
@@ -42,11 +42,11 @@ public:
 
     std::uint32_t addBox(const BoxDesc& desc);
 
-    /// Target velocity in the field frame (m/s) and yaw rate (rad/s). Held until changed.
-    void setTargetVelocity(std::uint32_t index, float vx, float vy, float yawRate);
+    /// Target velocity in the field frame and yaw rate. Held until changed.
+    void setTargetVelocity(std::uint32_t index, float vxMetersPerSec, float vyMetersPerSec, float yawRateRadPerSec);
 
-    [[nodiscard]] JPH::Vec3 position(std::uint32_t index) const;
-    [[nodiscard]] JPH::Vec3 velocity(std::uint32_t index) const;
+    [[nodiscard]] JPH::Vec3 positionMeters(std::uint32_t index) const;
+    [[nodiscard]] JPH::Vec3 velocityMetersPerSec(std::uint32_t index) const;
     [[nodiscard]] std::size_t size() const { return m_bodies.size(); }
 
     void OnStep(const JPH::PhysicsStepListenerContext& context) override;
@@ -54,13 +54,13 @@ public:
 private:
     struct Driven {
         JPH::BodyID body;
-        float mass;
-        float inertiaZ;
-        float maxForce;
-        float maxTorque;
-        float targetVx = 0.0f;
-        float targetVy = 0.0f;
-        float targetYawRate = 0.0f;
+        float massKg;
+        float yawInertiaKgMetersSq;
+        float maxForceNewtons;
+        float maxTorqueNewtonMeters;
+        float targetVxMetersPerSec = 0.0f;
+        float targetVyMetersPerSec = 0.0f;
+        float targetYawRateRadPerSec = 0.0f;
     };
 
     const Driven& require(std::uint32_t index) const;

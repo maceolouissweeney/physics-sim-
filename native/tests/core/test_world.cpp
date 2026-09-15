@@ -15,8 +15,8 @@
 namespace frcsim {
 namespace {
 
-constexpr float kFuelRadius = 0.075f; // REBUILT fuel: 0.150 m diameter
-constexpr float kFuelMass = 0.215f;   // REBUILT fuel: 0.203-0.227 kg
+constexpr float kFuelRadiusMeters = 0.075f; // REBUILT fuel: 0.150 m diameter
+constexpr float kFuelMassKg = 0.215f;   // REBUILT fuel: 0.203-0.227 kg
 
 JPH::BodyID addFloor(World& world) {
     JPH::BodyCreationSettings floor(new JPH::BoxShape(JPH::Vec3(10.0f, 10.0f, 0.5f)), JPH::RVec3(0, 0, -0.5),
@@ -25,14 +25,14 @@ JPH::BodyID addFloor(World& world) {
 }
 
 JPH::BodyID addBall(World& world, double z) {
-    JPH::BodyCreationSettings ball(new JPH::SphereShape(kFuelRadius), JPH::RVec3(0, 0, static_cast<JPH::Real>(z)),
+    JPH::BodyCreationSettings ball(new JPH::SphereShape(kFuelRadiusMeters), JPH::RVec3(0, 0, static_cast<JPH::Real>(z)),
                                    JPH::Quat::sIdentity(),
                                    JPH::EMotionType::Dynamic, ObjectLayers::kPiece);
     // Decision D7: no Jolt damping on pieces; the aero model owns air resistance.
     ball.mLinearDamping = 0.0f;
     ball.mAngularDamping = 0.0f;
     ball.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
-    ball.mMassPropertiesOverride.mMass = kFuelMass;
+    ball.mMassPropertiesOverride.mMass = kFuelMassKg;
     return world.physics().GetBodyInterface().CreateAndAddBody(ball, JPH::EActivation::Activate);
 }
 
@@ -45,7 +45,7 @@ void runRobotPeriods(World& world, int periods, int substeps = 5) {
 TEST(World, DefaultConfigCreates) {
     World world(WorldConfig{});
     EXPECT_DOUBLE_EQ(world.timeSeconds(), 0.0);
-    EXPECT_EQ(world.physics().GetGravity().GetZ(), static_cast<float>(WorldConfig{}.gravityZ));
+    EXPECT_EQ(world.physics().GetGravity().GetZ(), static_cast<float>(WorldConfig{}.gravityZMetersPerSecSq));
 }
 
 TEST(World, RejectsInvalidConfig) {
@@ -58,7 +58,7 @@ TEST(World, RejectsInvalidConfig) {
     EXPECT_THROW(World{tooManyThreads}, std::invalid_argument);
 
     WorldConfig nanGravity;
-    nanGravity.gravityZ = std::nan("");
+    nanGravity.gravityZMetersPerSecSq = std::nan("");
     EXPECT_THROW(World{nanGravity}, std::invalid_argument);
 }
 
@@ -87,7 +87,7 @@ TEST(World, FreeFallMatchesAnalyticSolution) {
     runRobotPeriods(world, 25); // 0.5 s at 4 ms substeps
 
     const double t = world.timeSeconds();
-    const double expected = z0 + 0.5 * WorldConfig{}.gravityZ * t * t;
+    const double expected = z0 + 0.5 * WorldConfig{}.gravityZMetersPerSecSq * t * t;
     const double actual = world.physics().GetBodyInterface().GetCenterOfMassPosition(ball).GetZ();
     // Symplectic Euler drifts by ~g*t*h/2 = 1 cm here.
     EXPECT_NEAR(actual, expected, 0.02);
@@ -101,7 +101,7 @@ TEST(World, BallComesToRestOnFloorAndSleeps) {
     runRobotPeriods(world, 150); // 3 s
 
     JPH::BodyInterface& bodies = world.physics().GetBodyInterface();
-    EXPECT_NEAR(bodies.GetCenterOfMassPosition(ball).GetZ(), kFuelRadius, 0.005);
+    EXPECT_NEAR(bodies.GetCenterOfMassPosition(ball).GetZ(), kFuelRadiusMeters, 0.005);
     EXPECT_FALSE(bodies.IsActive(ball)) << "resting piece should be asleep";
 }
 
@@ -112,12 +112,12 @@ TEST(World, ThreadPoolWorldSteps) {
     addFloor(world);
     const JPH::BodyID ball = addBall(world, 0.5);
     runRobotPeriods(world, 150);
-    EXPECT_NEAR(world.physics().GetBodyInterface().GetCenterOfMassPosition(ball).GetZ(), kFuelRadius, 0.005);
+    EXPECT_NEAR(world.physics().GetBodyInterface().GetCenterOfMassPosition(ball).GetZ(), kFuelRadiusMeters, 0.005);
 }
 
 TEST(World, MultipleWorldsAreIndependent) {
     WorldConfig lowGravity;
-    lowGravity.gravityZ = -1.0;
+    lowGravity.gravityZMetersPerSecSq = -1.0;
     World a(WorldConfig{});
     World b(lowGravity);
     const JPH::BodyID ballA = addBall(a, 10.0);

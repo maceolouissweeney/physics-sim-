@@ -11,15 +11,15 @@
 
 namespace frcsim::test {
 
-inline constexpr float kFuelRadius = 0.075f; // REBUILT fuel: 0.150 m diameter
-inline constexpr float kFuelMass = 0.215f;   // REBUILT fuel: 0.203-0.227 kg
+inline constexpr float kFuelRadiusMeters = 0.075f; // REBUILT fuel: 0.150 m diameter
+inline constexpr float kFuelMassKg = 0.215f;   // REBUILT fuel: 0.203-0.227 kg
 
 inline PieceTypeId addFuelType(World& world, const char* name = "fuel") {
     PieceTypeDesc desc;
     desc.name = name;
     desc.shape = PieceShape::Sphere;
-    desc.radius = kFuelRadius;
-    desc.mass = kFuelMass;
+    desc.radiusMeters = kFuelRadiusMeters;
+    desc.massKg = kFuelMassKg;
     desc.material = world.materials().require("foam");
     return world.pieceTypes().add(desc, world.materials());
 }

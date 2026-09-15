@@ -19,13 +19,14 @@ public final class Robots {
    * Adds a swerve robot at rest on the carpet.
    *
    * @param config robot configuration (copied; later changes have no effect)
-   * @param x field x (m)
-   * @param y field y (m)
+   * @param xMeters field x
+   * @param yMeters field y
    * @param yawRadians heading
    * @return robot handle
    * @throws IllegalArgumentException if the configuration is invalid (the message names the value)
    */
-  public SwerveRobot addSwerve(SwerveDriveConfig config, double x, double y, double yawRadians) {
+  public SwerveRobot addSwerve(
+      SwerveDriveConfig config, double xMeters, double yMeters, double yawRadians) {
     Objects.requireNonNull(config, "config");
     Objects.requireNonNull(config.bumperMaterial, "bumperMaterial");
     Material bumper = world.materials().get(config.bumperMaterial);
@@ -36,8 +37,8 @@ public final class Robots {
             config.packRobot(),
             bumper.id(),
             config.packModules(),
-            (float) x,
-            (float) y,
+            (float) xMeters,
+            (float) yMeters,
             (float) yawRadians);
     SwerveRobot robot =
         new SwerveRobot(world, index, FrcSimJNI.robotIoBuffer(handle, index), config);

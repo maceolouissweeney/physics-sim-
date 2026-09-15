@@ -26,12 +26,12 @@ enum class PieceShape : std::uint8_t {
 struct PieceTypeDesc {
     std::string name;
     PieceShape shape = PieceShape::Sphere;
-    float radius = 0.0f;                    ///< sphere, cylinder
-    float halfHeight = 0.0f;                ///< cylinder
-    std::array<float, 3> halfExtents{};     ///< box
-    float mass = 0.0f;                      ///< kg
+    float radiusMeters = 0.0f;                  ///< sphere, cylinder
+    float halfHeightMeters = 0.0f;              ///< cylinder
+    std::array<float, 3> halfExtentsMeters{};   ///< box
+    float massKg = 0.0f;
     MaterialId material = MaterialTable::kDefault;
-    float maxAngularVelocity = 500.0f;      ///< rad/s (decision D14)
+    float maxAngularVelocityRadPerSec = 500.0f; ///< decision D14
 };
 
 struct PieceType {

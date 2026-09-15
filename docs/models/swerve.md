@@ -22,7 +22,8 @@ R  = V_n / I_stall
 Kv = ω_free / (V_n − R · I_free)       (rad/s per volt)
 Kt = τ_stall / I_stall                  (N·m per amp)
 ```
-Presets: Kraken X60 (+FOC), Kraken X44 (+FOC), Falcon 500 (+FOC), NEO, NEO Vortex, taken from WPILib 2026.
+Presets (CTRE motors only): Kraken X60 (+FOC), Kraken X44 (+FOC), Falcon 500 (+FOC), Minion, taken from
+WPILib 2026.
 
 **Applied voltage:** `V = clamp(V_cmd, −V_bus, V_bus)`. In **coast** mode with `V_cmd = 0` the windings are open
 (`I = 0`); in **brake** mode they're shorted (`V = 0`, back-EMF braking).
@@ -97,7 +98,7 @@ Robot outputs report **ground truth** (`yaw`, pose, velocities) and **measuremen
 
 | Measurement | Model |
 |---|---|
-| Gyro yaw (`gyro_yaw`) | `ψ_g = ψ₀ + (ψ − ψ₀)·(1 + scaleError) + driftRate·t + N(0, σ)`, where `ψ₀` and `t` reset with `resetPose` (like re-zeroing a Pigeon 2) |
+| Gyro yaw (`gyro_yaw_radians`) | `ψ_g = ψ₀ + (ψ − ψ₀)·(1 + scaleError) + driftRate·t + N(0, σ)`, where `ψ₀` and `t` reset with `resetPose` (like re-zeroing a Pigeon 2) |
 | Drive encoder (`drive_rotor_position`) | rotor angle `wheelAngle·G`, floored to `2π / countsPerRev` when `countsPerRev > 0` |
 | Module angle, velocities, currents | exact |
 

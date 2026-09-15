@@ -46,14 +46,14 @@ class FrcSimVendordepTest {
               new Pose2d(1, 1, Rotation2d.kZero));
 
       for (int m = 0; m < 4; m++) {
-        drive.setModuleVoltages(m, 6.0, 0.0);
+        drive.setModuleCommandVolts(m, 6.0, 0.0);
       }
       for (int i = 0; i < 50; i++) {
         world.step(0.020);
       }
       assertTrue(drive.getPose().getX() > 1.5, "pose " + drive.getPose());
       assertEquals(4, drive.getModulePositions().length);
-      assertTrue(drive.getBatteryVoltage() < 12.5);
+      assertTrue(drive.getBatteryVolts() < 12.5);
     }
   }
 }

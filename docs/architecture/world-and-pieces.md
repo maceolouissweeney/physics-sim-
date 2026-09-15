@@ -111,7 +111,7 @@ outputs are already current: spawn and teleport write them directly.
 ## Sleeping and restitution
 - Jolt puts a body to sleep after `timeBeforeSleep` (0.5 s) below `sleepVelocityThreshold` (0.03 m/s).
   Sleeping pieces cost nothing in collision/solver. This is how a full field of 504 fuel stays cheap.
-- `minVelocityForRestitution` = 0.2 m/s (D15).
+- `minVelocityForRestitutionMetersPerSec` = 0.2 (D15).
 
 ## Kinematic bodies
 Scripted boxes with infinite mass (test obstacles, moving field elements). `moveTo(pose, dt)` sets a

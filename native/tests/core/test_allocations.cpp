@@ -25,7 +25,7 @@ void runSteadyStateScenario(World& world) {
     for (int i = 0; i < 24; ++i) {
         for (int j = 0; j < 21; ++j) {
             xyz.insert(xyz.end(), {6.0f + 0.2f * static_cast<float>(i), 2.0f + 0.2f * static_cast<float>(j),
-                                   test::kFuelRadius + 0.001f});
+                                   test::kFuelRadiusMeters + 0.001f});
         }
     }
     world.pieces().spawn(fuel, xyz, {}, {});

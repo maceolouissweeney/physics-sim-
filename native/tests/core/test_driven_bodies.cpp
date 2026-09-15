@@ -14,9 +14,9 @@ namespace {
 
 DrivenBodies::BoxDesc robotDesc(float x, float y) {
     DrivenBodies::BoxDesc desc;
-    desc.center = JPH::Vec3(x, y, 0.11f);
-    desc.mass = 60.0f;
-    desc.maxForce = 300.0f; // 5 m/s^2 max acceleration
+    desc.centerMeters = JPH::Vec3(x, y, 0.11f);
+    desc.massKg = 60.0f;
+    desc.maxForceNewtons = 300.0f; // 5 m/s^2 max acceleration
     return desc;
 }
 
@@ -26,11 +26,11 @@ TEST(DrivenBodies, AccelerationIsForceLimited) {
     world.driven().setTargetVelocity(robot, 3.0f, 0.0f, 0.0f);
 
     world.step(0.2, 50); // 0.2 s at 5 m/s^2 -> 1.0 m/s
-    EXPECT_NEAR(world.driven().velocity(robot).GetX(), 1.0f, 0.02f);
+    EXPECT_NEAR(world.driven().velocityMetersPerSec(robot).GetX(), 1.0f, 0.02f);
 
     world.step(1.0, 250); // reaches and holds the 3 m/s target
-    EXPECT_NEAR(world.driven().velocity(robot).GetX(), 3.0f, 0.01f);
-    EXPECT_NEAR(world.driven().position(robot).GetZ(), 0.11f, 1e-4f) << "planar motion only";
+    EXPECT_NEAR(world.driven().velocityMetersPerSec(robot).GetX(), 3.0f, 0.01f);
+    EXPECT_NEAR(world.driven().positionMeters(robot).GetZ(), 0.11f, 1e-4f) << "planar motion only";
 }
 
 TEST(DrivenBodies, StallsAgainstWallInsteadOfTunneling) {
@@ -41,8 +41,8 @@ TEST(DrivenBodies, StallsAgainstWallInsteadOfTunneling) {
     world.driven().setTargetVelocity(robot, 4.0f, 0.0f, 0.0f);
     test::runPeriods(world, 150); // 3 s of pushing into the wall
 
-    EXPECT_LT(world.driven().position(robot).GetX(), 0.95f - 0.45f + 0.02f);
-    EXPECT_NEAR(world.driven().velocity(robot).GetX(), 0.0f, 0.05f);
+    EXPECT_LT(world.driven().positionMeters(robot).GetX(), 0.95f - 0.45f + 0.02f);
+    EXPECT_NEAR(world.driven().velocityMetersPerSec(robot).GetX(), 0.0f, 0.05f);
 }
 
 TEST(DrivenBodies, PushesPiecesWithoutLaunchingThem) {
@@ -53,12 +53,12 @@ TEST(DrivenBodies, PushesPiecesWithoutLaunchingThem) {
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 10; ++j) {
             xyz.insert(xyz.end(), {1.0f + 0.16f * static_cast<float>(i), -0.8f + 0.16f * static_cast<float>(j),
-                                   test::kFuelRadius + 0.001f});
+                                   test::kFuelRadiusMeters + 0.001f});
         }
     }
     world.pieces().spawn(fuel, xyz, {}, {});
     DrivenBodies::BoxDesc desc = robotDesc(0, 0);
-    desc.maxForce = 590.0f;
+    desc.maxForceNewtons = 590.0f;
     const std::uint32_t robot = world.driven().addBox(desc);
     world.driven().setTargetVelocity(robot, 2.0f, 0.0f, 0.0f);
 
@@ -66,17 +66,17 @@ TEST(DrivenBodies, PushesPiecesWithoutLaunchingThem) {
     for (int period = 0; period < 150; ++period) {
         world.step(0.020, 5);
         for (std::uint32_t i = 0; i < world.pieces().highWater(); ++i) {
-            maxZ = std::max(maxZ, world.pieces().position(i).GetZ());
+            maxZ = std::max(maxZ, world.pieces().positionMeters(i).GetZ());
         }
     }
-    EXPECT_GT(world.driven().position(robot).GetX(), 1.0f) << "robot should drive into the pile";
+    EXPECT_GT(world.driven().positionMeters(robot).GetX(), 1.0f) << "robot should drive into the pile";
     EXPECT_LT(maxZ, 1.0f) << "pieces must not be launched by the pusher";
 }
 
 TEST(DrivenBodies, InvalidArguments) {
     World world(WorldConfig{});
     DrivenBodies::BoxDesc desc = robotDesc(0, 0);
-    desc.mass = 0.0f;
+    desc.massKg = 0.0f;
     EXPECT_THROW(world.driven().addBox(desc), std::invalid_argument);
     EXPECT_THROW(world.driven().setTargetVelocity(3, 1, 0, 0), NotFoundError);
     const std::uint32_t robot = world.driven().addBox(robotDesc(0, 0));

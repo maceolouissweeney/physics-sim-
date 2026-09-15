@@ -21,7 +21,7 @@ TEST(FieldJson, LoadsRepositoryTestField) {
     EXPECT_EQ(world.field().size(), 5u);
     EXPECT_EQ(world.field().primitiveName(1), "wall-blue");
     EXPECT_TRUE(world.pieceTypes().find("fuel"));
-    EXPECT_FLOAT_EQ(world.field().bounds().mMax.GetX(), 17.54f);
+    EXPECT_FLOAT_EQ(world.field().boundsMeters().mMax.GetX(), 17.54f);
 }
 
 TEST(FieldJson, InlineDocumentWithMaterialsTypesAndSpawns) {
@@ -53,8 +53,8 @@ TEST(FieldJson, InlineDocumentWithMaterialsTypesAndSpawns) {
     const MaterialId ice = world.materials().require("ice");
     const MaterialId foam = world.materials().require("foam");
     EXPECT_FLOAT_EQ(world.materials().combined(ice, foam).friction, 0.02f);
-    EXPECT_NEAR(world.pieces().position(7).GetX(), 0.5f, 1e-5f); // grid (2, 1, 0)
-    EXPECT_NEAR(world.pieces().position(7).GetY(), 2.25f, 1e-5f);
+    EXPECT_NEAR(world.pieces().positionMeters(7).GetX(), 0.5f, 1e-5f); // grid (2, 1, 0)
+    EXPECT_NEAR(world.pieces().positionMeters(7).GetY(), 2.25f, 1e-5f);
 }
 
 void expectInvalid(const std::string& doc, const std::string& messagePart) {

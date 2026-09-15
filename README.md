@@ -5,7 +5,8 @@ elements, hundreds of game pieces, and projectile flight with drag and spin. A C
 ([Jolt Physics](https://github.com/jrouwe/JoltPhysics)) exposed to Java robot projects as a WPILib vendordep.
 
 > **Status: early development.** Done: packaging (vendordep), world, field, game pieces at scale, and swerve
-> drivetrains (motors, battery, tire slip, load transfer, pushing, sensors) with WPILib adapters. Next: REBUILT
+> drivetrains (motors, battery, tire slip, load transfer, pushing, sensors) with WPILib adapters. Targets CTRE
+> Phoenix 6 hardware (REV is not supported). Next: REBUILT
 > field elements (Phase 3), then shooting and intakes (Phase 4). Not published yet; "frcsim" and
 > `org.frcsim` are placeholder names.
 
@@ -25,10 +26,10 @@ try (SimWorld world = SimWorld.create()) {
   GamePieceType fuel = world.pieces().findType("fuel").orElseThrow();
   world.pieces().spawn(fuel, 8.0, 4.0, 1.0);
 
-  float[] positions = new float[3 * world.pieces().capacity()];
+  float[] positionsXyzMeters = new float[3 * world.pieces().capacity()];
   for (int i = 0; i < 50; i++) {
-    world.step(0.020);                                   // one robot period, 5 physics sub-steps
-    int count = world.pieces().copyPositions(positions);  // zero-copy source, no allocation
+    world.step(0.020);                                                   // one robot period, 5 sub-steps
+    int count = world.pieces().copyPositionsMeters(positionsXyzMeters);  // no allocation
   }
 }
 ```
@@ -41,7 +42,7 @@ module.driveMotor = WpilibMotors.fromDCMotor(DCMotor.getKrakenX60Foc(1), 6.0e-5)
 SimSwerveDrive drive =
     SimSwerveDrive.create(world, SwerveDriveConfig.rectangular(0.55, 0.55, module), new Pose2d(2, 4, Rotation2d.kZero));
 
-drive.setModuleVoltages(0, 6.0, 0.0);                          // feed from your motor controller sim states
+drive.setModuleCommandVolts(0, 6.0, 0.0);                      // feed from your TalonFX sim states
 world.step(0.020);
 SwerveModulePosition[] odometry = drive.getModulePositions();  // from simulated encoders: slip causes drift
 Pose2d truth = drive.getPose();                                // ground truth for comparison

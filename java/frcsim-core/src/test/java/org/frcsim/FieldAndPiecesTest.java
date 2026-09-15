@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 /** Materials, field loading, game pieces, and kinematic bodies through the Java API. */
 class FieldAndPiecesTest {
-  private static final double FUEL_RADIUS = 0.075;
+  private static final double FUEL_RADIUS_METERS = 0.075;
 
   private static Path testField() {
     return Path.of(System.getProperty("frcsim.repoDir"), "fields", "test-flat", "field.json");
@@ -35,15 +35,16 @@ class FieldAndPiecesTest {
       assertEquals(3, world.pieces().count());
       run(world, 100);
 
-      assertEquals(FUEL_RADIUS, world.pieces().z(indices[1]), 0.005);
-      assertEquals(3.0, world.pieces().x(indices[1]), 0.01);
+      assertEquals(FUEL_RADIUS_METERS, world.pieces().zMeters(indices[1]), 0.005);
+      assertEquals(3.0, world.pieces().xMeters(indices[1]), 0.01);
       assertEquals(PieceState.ON_FIELD, world.pieces().state(indices[1]));
       assertEquals(3, world.stats().piecesSimulated());
       assertEquals(3, world.pieces().countInState(PieceState.ON_FIELD));
 
       float[] copy = new float[9];
-      assertEquals(3, world.pieces().copyPositions(copy));
+      assertEquals(3, world.pieces().copyPositionsMeters(copy));
       assertEquals(4.0f, copy[6], 0.01f);
+      assertEquals(3, world.pieces().copyPositionsMeters(PieceState.ON_FIELD, copy));
     }
   }
 
@@ -52,7 +53,7 @@ class FieldAndPiecesTest {
     try (SimWorld world = SimWorld.create()) {
       world.field().loadJson(testField());
       GamePieceType fuel = world.pieces().findType("fuel").orElseThrow();
-      int piece = world.pieces().spawn(fuel, 5, 5, FUEL_RADIUS);
+      int piece = world.pieces().spawn(fuel, 5, 5, FUEL_RADIUS_METERS);
 
       world.pieces().setState(piece, PieceState.IN_ROBOT);
       assertEquals(PieceState.IN_ROBOT, world.pieces().state(piece));
@@ -69,7 +70,7 @@ class FieldAndPiecesTest {
           IllegalArgumentException.class,
           () -> world.pieces().setState(piece, PieceState.INACTIVE));
       assertThrows(NoSuchElementException.class, () -> world.pieces().despawn(900));
-      assertThrows(IndexOutOfBoundsException.class, () -> world.pieces().x(-1));
+      assertThrows(IndexOutOfBoundsException.class, () -> world.pieces().xMeters(-1));
     }
   }
 
@@ -78,7 +79,7 @@ class FieldAndPiecesTest {
     try (SimWorld world = SimWorld.create()) {
       Material carpet = world.materials().get(Materials.CARPET);
       world.field().addGround(0, carpet);
-      world.field().setBounds(-1, -1, -1, 1, 1, 5);
+      world.field().setBoundsMeters(-1, -1, -1, 1, 1, 5);
       GamePieceType ball =
           world.pieces().registerType(GamePieceTypeSpec.sphere("ball", 0.1, 0.3, carpet));
       int piece = world.pieces().spawn(ball, 0, 0, 0.1);
@@ -142,8 +143,8 @@ class FieldAndPiecesTest {
               .pieces()
               .registerType(
                   GamePieceTypeSpec.sphere(
-                      "fuel", FUEL_RADIUS, 0.215, world.materials().get(Materials.FOAM)));
-      int piece = world.pieces().spawn(fuel, 1.0, 0, FUEL_RADIUS);
+                      "fuel", FUEL_RADIUS_METERS, 0.215, world.materials().get(Materials.FOAM)));
+      int piece = world.pieces().spawn(fuel, 1.0, 0, FUEL_RADIUS_METERS);
       int plow =
           world
               .kinematics()
@@ -152,7 +153,8 @@ class FieldAndPiecesTest {
         world.kinematics().moveTo(plow, 0.03 * i, 0, 0.1, 0, 0.020);
         world.step(0.020);
       }
-      assertTrue(world.pieces().x(piece) > 1.5 + 0.45, "piece x = " + world.pieces().x(piece));
+      assertTrue(
+          world.pieces().xMeters(piece) > 1.5 + 0.45, "piece x = " + world.pieces().xMeters(piece));
     }
   }
 }

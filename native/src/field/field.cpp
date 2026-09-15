@@ -13,8 +13,8 @@
 namespace frcsim {
 namespace {
 
-constexpr float kGroundHalfExtentXY = 100.0f;
-constexpr float kGroundHalfThickness = 0.5f;
+constexpr float kGroundHalfExtentXYMeters = 100.0f;
+constexpr float kGroundHalfThicknessMeters = 0.5f;
 
 bool finite(JPH::Vec3 v) {
     return std::isfinite(v.GetX()) && std::isfinite(v.GetY()) && std::isfinite(v.GetZ());
@@ -27,43 +27,44 @@ JPH::AABox unboundedBox() {
 }
 
 Field::Field(JPH::PhysicsSystem& physics, const MaterialTable& materials)
-    : m_physics(physics), m_materials(materials), m_bounds(unboundedBox()) {}
+    : m_physics(physics), m_materials(materials), m_boundsMeters(unboundedBox()) {}
 
 Field::~Field() {
     clear();
 }
 
-std::uint32_t Field::addGround(float height, MaterialId material) {
-    if (!std::isfinite(height)) {
+std::uint32_t Field::addGround(float heightMeters, MaterialId material) {
+    if (!std::isfinite(heightMeters)) {
         throw std::invalid_argument("ground height must be finite");
     }
-    const auto shape = makeBox(JPH::Vec3(kGroundHalfExtentXY, kGroundHalfExtentXY, kGroundHalfThickness),
-                               kStaticConvexRadius);
-    return addBody("ground", shape.GetPtr(), JPH::Vec3(0.0f, 0.0f, height - kGroundHalfThickness),
+    const auto shape =
+        makeBox(JPH::Vec3(kGroundHalfExtentXYMeters, kGroundHalfExtentXYMeters, kGroundHalfThicknessMeters),
+                kStaticConvexRadiusMeters);
+    return addBody("ground", shape.GetPtr(), JPH::Vec3(0.0f, 0.0f, heightMeters - kGroundHalfThicknessMeters),
                    JPH::Quat::sIdentity(), material);
 }
 
-std::uint32_t Field::addBox(std::string_view name, JPH::Vec3 center, JPH::Vec3 halfExtents, JPH::Quat rotation,
-                            MaterialId material) {
-    const auto shape = makeBox(halfExtents, kStaticConvexRadius);
-    return addBody(name, shape.GetPtr(), center, rotation, material);
+std::uint32_t Field::addBox(std::string_view name, JPH::Vec3 centerMeters, JPH::Vec3 halfExtentsMeters,
+                            JPH::Quat rotation, MaterialId material) {
+    const auto shape = makeBox(halfExtentsMeters, kStaticConvexRadiusMeters);
+    return addBody(name, shape.GetPtr(), centerMeters, rotation, material);
 }
 
-std::uint32_t Field::addCylinder(std::string_view name, JPH::Vec3 center, float radius, float halfHeight,
-                                 JPH::Quat rotation, MaterialId material) {
-    const auto shape = makeZCylinder(radius, halfHeight, kStaticConvexRadius);
-    return addBody(name, shape.GetPtr(), center, rotation, material);
+std::uint32_t Field::addCylinder(std::string_view name, JPH::Vec3 centerMeters, float radiusMeters,
+                                 float halfHeightMeters, JPH::Quat rotation, MaterialId material) {
+    const auto shape = makeZCylinder(radiusMeters, halfHeightMeters, kStaticConvexRadiusMeters);
+    return addBody(name, shape.GetPtr(), centerMeters, rotation, material);
 }
 
-std::uint32_t Field::addConvexHull(std::string_view name, JPH::Vec3 center, std::span<const JPH::Vec3> points,
-                                   JPH::Quat rotation, MaterialId material) {
-    const auto shape = makeConvexHull(points, kStaticConvexRadius);
-    return addBody(name, shape.GetPtr(), center, rotation, material);
+std::uint32_t Field::addConvexHull(std::string_view name, JPH::Vec3 centerMeters,
+                                   std::span<const JPH::Vec3> pointsMeters, JPH::Quat rotation, MaterialId material) {
+    const auto shape = makeConvexHull(pointsMeters, kStaticConvexRadiusMeters);
+    return addBody(name, shape.GetPtr(), centerMeters, rotation, material);
 }
 
-std::uint32_t Field::addBody(std::string_view name, const JPH::Shape* shape, JPH::Vec3 center, JPH::Quat rotation,
-                             MaterialId material) {
-    if (!finite(center)) {
+std::uint32_t Field::addBody(std::string_view name, const JPH::Shape* shape, JPH::Vec3 centerMeters,
+                             JPH::Quat rotation, MaterialId material) {
+    if (!finite(centerMeters)) {
         throw std::invalid_argument("field primitive center must be finite");
     }
     if (rotation.IsNaN() || !rotation.IsNormalized(1.0e-3f)) {
@@ -72,8 +73,8 @@ std::uint32_t Field::addBody(std::string_view name, const JPH::Shape* shape, JPH
     const Material& properties = m_materials.get(material);
     const auto index = static_cast<std::uint32_t>(m_primitives.size());
 
-    JPH::BodyCreationSettings settings(shape, JPH::RVec3(center), rotation.Normalized(), JPH::EMotionType::Static,
-                                       ObjectLayers::kStatic);
+    JPH::BodyCreationSettings settings(shape, JPH::RVec3(centerMeters), rotation.Normalized(),
+                                       JPH::EMotionType::Static, ObjectLayers::kStatic);
     settings.mFriction = properties.friction;
     settings.mRestitution = properties.restitution;
     settings.mUserData = BodyTag{BodyKind::Field, material, index}.encode();
@@ -88,11 +89,11 @@ std::uint32_t Field::addBody(std::string_view name, const JPH::Shape* shape, JPH
     return index;
 }
 
-void Field::setBounds(const JPH::AABox& bounds) {
-    if (!bounds.IsValid() || !finite(bounds.mMin) || !finite(bounds.mMax)) {
+void Field::setBoundsMeters(const JPH::AABox& boundsMeters) {
+    if (!boundsMeters.IsValid() || !finite(boundsMeters.mMin) || !finite(boundsMeters.mMax)) {
         throw std::invalid_argument("field bounds must be finite with min <= max");
     }
-    m_bounds = bounds;
+    m_boundsMeters = boundsMeters;
 }
 
 void Field::clear() {
@@ -102,7 +103,7 @@ void Field::clear() {
         bodies.DestroyBody(primitive.body);
     }
     m_primitives.clear();
-    m_bounds = unboundedBox();
+    m_boundsMeters = unboundedBox();
 }
 
 const std::string& Field::primitiveName(std::uint32_t index) const {

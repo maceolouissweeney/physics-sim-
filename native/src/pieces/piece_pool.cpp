@@ -38,7 +38,7 @@ PiecePool::PiecePool(JPH::PhysicsSystem& physics, const PieceTypeRegistry& types
       m_bodies(capacity),
       m_typeOf(capacity, 0),
       m_states(capacity, static_cast<std::uint8_t>(PieceState::Inactive)),
-      m_positions(3u * static_cast<std::size_t>(capacity), 0.0f),
+      m_positionsMeters(3u * static_cast<std::size_t>(capacity), 0.0f),
       m_freeByType(PieceTypeRegistry::kMaxTypes) {
     if (capacity == 0) {
         throw std::invalid_argument("piece capacity must be > 0");
@@ -64,19 +64,19 @@ PiecePool::~PiecePool() {
     }
 }
 
-JPH::BodyID PiecePool::createBody(PieceTypeId typeId, std::uint32_t index, JPH::Vec3 position) {
+JPH::BodyID PiecePool::createBody(PieceTypeId typeId, std::uint32_t index, JPH::Vec3 positionMeters) {
     const PieceType& type = m_types.get(typeId);
     const Material& material = m_materials.get(type.desc.material);
 
-    JPH::BodyCreationSettings settings(type.shape.GetPtr(), JPH::RVec3(position), JPH::Quat::sIdentity(),
+    JPH::BodyCreationSettings settings(type.shape.GetPtr(), JPH::RVec3(positionMeters), JPH::Quat::sIdentity(),
                                        JPH::EMotionType::Dynamic, ObjectLayers::kPiece);
     settings.mFriction = material.friction;
     settings.mRestitution = material.restitution;
     settings.mLinearDamping = 0.0f;  // decision D7
     settings.mAngularDamping = 0.0f; // decision D7
-    settings.mMaxAngularVelocity = type.desc.maxAngularVelocity; // decision D14
+    settings.mMaxAngularVelocity = type.desc.maxAngularVelocityRadPerSec; // decision D14
     settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
-    settings.mMassPropertiesOverride.mMass = type.desc.mass;
+    settings.mMassPropertiesOverride.mMass = type.desc.massKg;
     settings.mUserData = BodyTag{BodyKind::Piece, type.desc.material, index}.encode();
 
     JPH::Body* body = m_physics.GetBodyInterfaceNoLock().CreateBody(settings);
@@ -86,20 +86,20 @@ JPH::BodyID PiecePool::createBody(PieceTypeId typeId, std::uint32_t index, JPH::
     return body->GetID();
 }
 
-void PiecePool::spawn(PieceTypeId typeId, std::span<const float> positionsXyz, std::span<const float> velocitiesXyz,
-                      std::span<std::uint32_t> outIndices) {
+void PiecePool::spawn(PieceTypeId typeId, std::span<const float> positionsXyzMeters,
+                      std::span<const float> velocitiesXyzMetersPerSec, std::span<std::uint32_t> outIndices) {
     (void)m_types.get(typeId); // throws NotFoundError for an unknown id
-    if (positionsXyz.size() % 3 != 0) {
+    if (positionsXyzMeters.size() % 3 != 0) {
         throw std::invalid_argument("positions must contain xyz triples");
     }
-    const std::size_t count = positionsXyz.size() / 3;
-    if (!velocitiesXyz.empty() && velocitiesXyz.size() != positionsXyz.size()) {
+    const std::size_t count = positionsXyzMeters.size() / 3;
+    if (!velocitiesXyzMetersPerSec.empty() && velocitiesXyzMetersPerSec.size() != positionsXyzMeters.size()) {
         throw std::invalid_argument("velocities must be empty or match positions");
     }
     if (!outIndices.empty() && outIndices.size() < count) {
         throw std::invalid_argument("outIndices is too small");
     }
-    if (!allFinite(positionsXyz) || !allFinite(velocitiesXyz)) {
+    if (!allFinite(positionsXyzMeters) || !allFinite(velocitiesXyzMetersPerSec)) {
         throw std::invalid_argument("positions and velocities must be finite");
     }
     if (count == 0) {
@@ -120,30 +120,30 @@ void PiecePool::spawn(PieceTypeId typeId, std::span<const float> positionsXyz, s
     JPH::BodyInterface& bodies = m_physics.GetBodyInterfaceNoLock();
     m_scratchBodies.clear();
     for (std::size_t k = 0; k < count; ++k) {
-        const JPH::Vec3 position(positionsXyz[3 * k], positionsXyz[3 * k + 1], positionsXyz[3 * k + 2]);
-        const JPH::Vec3 velocity = velocitiesXyz.empty()
+        const JPH::Vec3 positionMeters(positionsXyzMeters[3 * k], positionsXyzMeters[3 * k + 1], positionsXyzMeters[3 * k + 2]);
+        const JPH::Vec3 velocityMetersPerSec = velocitiesXyzMetersPerSec.empty()
                                        ? JPH::Vec3::sZero()
-                                       : JPH::Vec3(velocitiesXyz[3 * k], velocitiesXyz[3 * k + 1],
-                                                   velocitiesXyz[3 * k + 2]);
+                                       : JPH::Vec3(velocitiesXyzMetersPerSec[3 * k], velocitiesXyzMetersPerSec[3 * k + 1],
+                                                   velocitiesXyzMetersPerSec[3 * k + 2]);
         std::uint32_t index;
         JPH::BodyID id;
         if (!freeList.empty()) {
             index = freeList.back();
             freeList.pop_back();
             id = m_bodies[index];
-            bodies.SetPositionAndRotation(id, JPH::RVec3(position), JPH::Quat::sIdentity(),
+            bodies.SetPositionAndRotation(id, JPH::RVec3(positionMeters), JPH::Quat::sIdentity(),
                                           JPH::EActivation::DontActivate);
         } else {
             index = m_highWater;
-            id = createBody(typeId, index, position);
+            id = createBody(typeId, index, positionMeters);
             m_bodies[index] = id;
             m_typeOf[index] = typeId;
             ++m_highWater;
             ++m_stateCounts[static_cast<std::size_t>(PieceState::Inactive)]; // new index starts Inactive
         }
-        bodies.SetLinearAndAngularVelocity(id, velocity, JPH::Vec3::sZero());
+        bodies.SetLinearAndAngularVelocity(id, velocityMetersPerSec, JPH::Vec3::sZero());
         transition(index, PieceState::OnField);
-        writePosition(index, JPH::RVec3(position));
+        writePosition(index, JPH::RVec3(positionMeters));
         m_scratchBodies.push_back(id);
         if (!outIndices.empty()) {
             outIndices[k] = index;
@@ -155,11 +155,12 @@ void PiecePool::spawn(PieceTypeId typeId, std::span<const float> positionsXyz, s
     bodies.AddBodiesFinalize(m_scratchBodies.data(), n, addState, JPH::EActivation::Activate);
 }
 
-std::uint32_t PiecePool::spawnOne(PieceTypeId type, JPH::Vec3 position, JPH::Vec3 velocity) {
-    const float p[3] = {position.GetX(), position.GetY(), position.GetZ()};
-    const float v[3] = {velocity.GetX(), velocity.GetY(), velocity.GetZ()};
+std::uint32_t PiecePool::spawnOne(PieceTypeId type, JPH::Vec3 positionMeters, JPH::Vec3 velocityMetersPerSec) {
+    const float positionXyzMeters[3] = {positionMeters.GetX(), positionMeters.GetY(), positionMeters.GetZ()};
+    const float velocityXyzMetersPerSec[3] = {velocityMetersPerSec.GetX(), velocityMetersPerSec.GetY(),
+                                              velocityMetersPerSec.GetZ()};
     std::uint32_t index = 0;
-    spawn(type, p, v, std::span<std::uint32_t>(&index, 1));
+    spawn(type, positionXyzMeters, velocityXyzMetersPerSec, std::span<std::uint32_t>(&index, 1));
     return index;
 }
 
@@ -196,23 +197,24 @@ void PiecePool::setState(std::uint32_t index, PieceState next) {
     transition(index, next);
 }
 
-void PiecePool::teleport(std::uint32_t index, JPH::Vec3 position, JPH::Vec3 linearVelocity,
-                         JPH::Vec3 angularVelocity) {
+void PiecePool::teleport(std::uint32_t index, JPH::Vec3 positionMeters, JPH::Vec3 linearVelocityMetersPerSec,
+                         JPH::Vec3 angularVelocityRadPerSec) {
     checkSpawned(index);
     JPH::BodyInterface& bodies = m_physics.GetBodyInterfaceNoLock();
     const JPH::BodyID id = m_bodies[index];
-    bodies.SetPositionAndRotation(id, JPH::RVec3(position), JPH::Quat::sIdentity(), JPH::EActivation::DontActivate);
-    bodies.SetLinearAndAngularVelocity(id, linearVelocity, angularVelocity);
+    bodies.SetPositionAndRotation(id, JPH::RVec3(positionMeters), JPH::Quat::sIdentity(),
+                                  JPH::EActivation::DontActivate);
+    bodies.SetLinearAndAngularVelocity(id, linearVelocityMetersPerSec, angularVelocityRadPerSec);
     if (!isPhysical(state(index))) {
         bodies.AddBody(id, JPH::EActivation::Activate);
         transition(index, PieceState::OnField);
     } else {
         bodies.ActivateBody(id);
     }
-    writePosition(index, JPH::RVec3(position));
+    writePosition(index, JPH::RVec3(positionMeters));
 }
 
-void PiecePool::postStep(const JPH::AABox& bounds) {
+void PiecePool::postStep(const JPH::AABox& boundsMeters) {
     const JPH::BodyLockInterfaceNoLock& locks = m_physics.GetBodyLockInterfaceNoLock();
     JPH::BodyInterface& bodies = m_physics.GetBodyInterfaceNoLock();
     for (std::uint32_t i = 0; i < m_highWater; ++i) {
@@ -224,9 +226,9 @@ void PiecePool::postStep(const JPH::AABox& bounds) {
         if (body == nullptr || !body->IsActive()) {
             continue;
         }
-        const JPH::RVec3 p = body->GetPosition();
-        writePosition(i, p);
-        if (!inside(bounds, p)) {
+        const JPH::RVec3 positionMeters = body->GetPosition();
+        writePosition(i, positionMeters);
+        if (!inside(boundsMeters, positionMeters)) {
             bodies.RemoveBody(m_bodies[i]);
             transition(i, PieceState::OutOfBounds);
         }
@@ -250,11 +252,11 @@ JPH::BodyID PiecePool::body(std::uint32_t index) const {
     return m_bodies[index];
 }
 
-JPH::Vec3 PiecePool::position(std::uint32_t index) const {
+JPH::Vec3 PiecePool::positionMeters(std::uint32_t index) const {
     if (index >= m_highWater) {
         throw NotFoundError("piece index out of range");
     }
-    const float* p = &m_positions[3u * index];
+    const float* p = &m_positionsMeters[3u * index];
     return JPH::Vec3(p[0], p[1], p[2]);
 }
 
@@ -265,11 +267,11 @@ void PiecePool::transition(std::uint32_t index, PieceState next) {
     m_states[index] = static_cast<std::uint8_t>(next);
 }
 
-void PiecePool::writePosition(std::uint32_t index, JPH::RVec3 position) {
-    float* out = &m_positions[3u * index];
-    out[0] = static_cast<float>(position.GetX());
-    out[1] = static_cast<float>(position.GetY());
-    out[2] = static_cast<float>(position.GetZ());
+void PiecePool::writePosition(std::uint32_t index, JPH::RVec3 positionMeters) {
+    float* out = &m_positionsMeters[3u * index];
+    out[0] = static_cast<float>(positionMeters.GetX());
+    out[1] = static_cast<float>(positionMeters.GetY());
+    out[2] = static_cast<float>(positionMeters.GetZ());
 }
 
 } // namespace frcsim

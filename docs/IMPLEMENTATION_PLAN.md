@@ -61,6 +61,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(!)` blocked or needs 
 | D28 | Current-limited motors report the **effective** applied voltage `I·R + back-EMF`, and supply current follows it | Reporting the commanded voltage overstated battery draw about 4.5× at stall and caused false brownouts, which the traction validation test caught. |
 | D29 | Java robot configs (`SwerveDriveConfig`, `SwerveModuleConfig`) are **Phoenix 6-style mutable config objects** with public fields, validated natively on `addSwerve` | 40+ parameters per module; FRC teams already use this pattern with CTRE configs; native validation gives one source of truth for ranges. Supersedes CLAUDE.md §8's "builders for configs" for robot configs. |
 | D30 | Robot inputs and outputs are one **shared-memory I/O block per robot** (`frcsim_swerve_robot_io`, 600 bytes, layout checked natively and from Java) | Setting 8 module voltages and reading pose, encoders, currents, and battery state costs zero JNI calls per period. |
+| D31 | **Every quantity with a unit carries the unit in its name** in C++, the C ABI, JNI, and Java (`xMeters`, `drive_command_volts`, `YAW_RADIANS`); unitless ratios/coefficients/counts don't | Removes a whole class of unit mix-ups (rad vs rotations vs degrees at the CTRE boundary, m vs in) and makes call sites self-documenting. Layouts unchanged, so still ABI 1 (D21). |
+| D32 | **CTRE Phoenix 6 hardware only; REV removed** (NEO/Vortex presets, SparkSim recipe). Minion preset added; swerve modules model CTRE `CouplingGearRatio` | The target robots use TalonFX/CANcoder/Pigeon 2 exclusively; the integration plan feeds a Phoenix 6 `SwerveDrivetrain` from the physics sim. |
 
 ---
 
@@ -139,7 +141,10 @@ plus friction-limited impulses fit the design.
 | [x] P2.9 | Sensors: gyro (yaw/pitch/roll + rates), optional seeded noise and drift | `sensors/*` | noise-off exactness test |
 | [x] P2.10 | Validation suite (free speed, μg accel limit, pushing match, stall current, rotate in place) + 10k-step NaN fuzz, 1–10 substeps | `tests/drive/*` | all pass |
 | [x] P2.11 | Java: `SwerveConfig`/`ModuleConfig` records, `SwerveRobot`; new `frcsim-wpilib` module (DCMotor, Pose2d/3d, SwerveModuleState adapters; `RobotBase.isReal()` guard) | `java/frcsim-wpilib/**` | JUnit |
-| [~] P2.12 | Docs: swerve model (equations + parameter guide), quickstart, CTRE/REV integration recipes | `docs/models/swerve.md`, `docs/guides/*` | reviewed |
+| [~] P2.12 | Docs: swerve model (equations + parameter guide), quickstart, CTRE integration (REV dropped, D32) | `docs/models/swerve.md`, `docs/guides/*` | reviewed |
+| [x] P2.13 | Unit-suffixed names across C++, C ABI, JNI, Java (D31); REV presets removed, Minion added (D32); steering coupling ratio; capi/jni split into focused files | all | 98 native, 26 Java, 3 smoke tests |
+| [ ] P2.14 | `frcsim-ctre` module: bind a Phoenix 6 `SwerveDrivetrain` (TalonFX drive/steer, CANcoder, Pigeon 2) to a simulated robot — read motor voltages, write rotor/encoder/gyro sim states and supply voltage each period | `java/frcsim-ctre/**` | smoke robot drives a CTRE swerve |
+| [ ] P2.15 | AdvantageScope publisher (`frcsim-wpilib`): zero-allocation `Pose3d[]` robots + `Translation3d[]` fuel struct arrays over NT4 | `java/frcsim-wpilib/**` | struct packing test vs WPILib unpack |
 
 **Gate:** validation suite green; bench scenario with 2 robots + 360 awake pieces within budget.
 
@@ -154,9 +159,9 @@ plus friction-limited impulses fit the design.
 - ✅ `frcsim-wpilib` verified end to end: the stock WPILib smoke robot drives a swerve robot through
   `SimSwerveDrive` + `WpilibMotors` via the vendordep.
 - ✅ P2.11 `frcsim-wpilib` unit tests green (WPILib third-party runtime jars pinned to GradleRIO's versions).
-- Test totals: 97 native, 25 Java, 3 smoke robot.
-- Remaining: P2.12 (verify the CTRE/REV recipes in `docs/guides/swerve-quickstart.md` against the vendor
-  libraries) and the full-clock-speed performance re-measurement.
+- Test totals: 98 native, 26 Java, 3 smoke robot.
+- Remaining: P2.14 CTRE module, P2.15 AdvantageScope publisher, and the full-clock-speed performance
+  re-measurement.
 
 ---
 
@@ -168,8 +173,8 @@ plus friction-limited impulses fit the design.
 | [ ] P3.2 | Sensor volumes → events (enter/exit per piece/robot) | tests |
 | [ ] P3.3 | Author `fields/2026-rebuilt/field.json` from official field drawings (hubs, bumps, trenches, tower, depot/outpost) | overlay check against AdvantageScope field model |
 | [ ] P3.4 | `frcsim-games` module: `Arena` abstraction, `Rebuilt2026` (504 placements, scoring, hub state, human-player re-entry) | JUnit rule tests |
-| [ ] P3.5 | Telemetry: struct-array publishers (`Translation3d[]` pieces, `Pose3d[]` robots), AdvantageKit helpers | AdvantageScope visual check |
-| [ ] P3.6 | Example AdvantageKit swerve robot project | runs in sim |
+| [ ] P3.5 | Telemetry beyond P2.15: scored/held piece counts, hub state, AdvantageKit helpers | AdvantageScope visual check |
+| [ ] P3.6 | Example CTRE Phoenix 6 swerve robot project (generated `TunerConstants` + `frcsim-ctre`) | runs in sim |
 | [ ] P3.7 | Docs: authoring a field, season arena guide | reviewed |
 
 **Gate:** robot drives over bumps, fuel scatters, budgets hold with the full REBUILT arena.

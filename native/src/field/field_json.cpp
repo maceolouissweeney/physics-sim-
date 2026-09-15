@@ -177,7 +177,7 @@ std::size_t loadStatics(World& world, const Json& doc) {
 
 void loadBounds(World& world, const Json& doc) {
     if (const Json* bounds = optionalMember(doc, "bounds", &Json::is_object, "an object")) {
-        world.field().setBounds(JPH::AABox(vec3(*bounds, "min", "bounds"), vec3(*bounds, "max", "bounds")));
+        world.field().setBoundsMeters(JPH::AABox(vec3(*bounds, "min", "bounds"), vec3(*bounds, "max", "bounds")));
     }
 }
 
@@ -197,21 +197,22 @@ std::size_t loadPieceTypes(World& world, const Json& doc) {
         const std::string shape = stringOr(t, "shape", "", where);
         if (shape == "sphere") {
             desc.shape = PieceShape::Sphere;
-            desc.radius = number(t, "radius", where);
+            desc.radiusMeters = number(t, "radius", where);
         } else if (shape == "cylinder") {
             desc.shape = PieceShape::Cylinder;
-            desc.radius = number(t, "radius", where);
-            desc.halfHeight = number(t, "halfHeight", where);
+            desc.radiusMeters = number(t, "radius", where);
+            desc.halfHeightMeters = number(t, "halfHeight", where);
         } else if (shape == "box") {
             desc.shape = PieceShape::Box;
             const JPH::Vec3 h = vec3(t, "halfExtents", where);
-            desc.halfExtents = {h.GetX(), h.GetY(), h.GetZ()};
+            desc.halfExtentsMeters = {h.GetX(), h.GetY(), h.GetZ()};
         } else {
             fail(where, "unknown shape '" + shape + "' (expected sphere, cylinder, box)");
         }
-        desc.mass = number(t, "mass", where);
+        desc.massKg = number(t, "mass", where);
         desc.material = materialRef(world, t, where);
-        desc.maxAngularVelocity = numberOr(t, "maxAngularVelocity", desc.maxAngularVelocity, where);
+        desc.maxAngularVelocityRadPerSec =
+            numberOr(t, "maxAngularVelocity", desc.maxAngularVelocityRadPerSec, where);
         world.pieceTypes().add(desc, world.materials());
         ++added;
     }

@@ -9,7 +9,7 @@ import java.nio.ByteOrder;
  */
 public final class WorldStats {
   // Mirrors frcsim_world_stats in frcsim_c.h; verified against native offsetof() by tests.
-  static final int SIZE = 40;
+  static final int SIZE_BYTES = 40;
   static final int OFFSET_TIME_SECONDS = 0;
   static final int OFFSET_LAST_STEP_WALL_SECONDS = 8;
   static final int OFFSET_SUBSTEP_COUNT = 16;
@@ -22,9 +22,9 @@ public final class WorldStats {
   private final ByteBuffer buffer;
 
   WorldStats(SimWorld world, ByteBuffer buffer) {
-    if (buffer.capacity() != SIZE) {
+    if (buffer.capacity() != SIZE_BYTES) {
       throw new FrcSimException(
-          "native stats block is " + buffer.capacity() + " bytes, expected " + SIZE);
+          "native stats block is " + buffer.capacity() + " bytes, expected " + SIZE_BYTES);
     }
     this.world = world;
     this.buffer = buffer.order(ByteOrder.nativeOrder());

@@ -8,29 +8,29 @@ import java.util.Objects;
  *
  * @param name unique type name
  * @param shape collision shape
- * @param radius sphere or cylinder radius (m)
- * @param halfHeight cylinder half height (m)
- * @param halfExtentX box half extent x (m)
- * @param halfExtentY box half extent y (m)
- * @param halfExtentZ box half extent z (m)
- * @param mass mass (kg)
+ * @param radiusMeters sphere or cylinder radius
+ * @param halfHeightMeters cylinder half height
+ * @param halfExtentXMeters box half extent x
+ * @param halfExtentYMeters box half extent y
+ * @param halfExtentZMeters box half extent z
+ * @param massKg mass
  * @param material surface material
- * @param maxAngularVelocity angular velocity limit (rad/s)
+ * @param maxAngularVelocityRadPerSec angular velocity limit
  */
 public record GamePieceTypeSpec(
     String name,
     GamePieceShape shape,
-    double radius,
-    double halfHeight,
-    double halfExtentX,
-    double halfExtentY,
-    double halfExtentZ,
-    double mass,
+    double radiusMeters,
+    double halfHeightMeters,
+    double halfExtentXMeters,
+    double halfExtentYMeters,
+    double halfExtentZMeters,
+    double massKg,
     Material material,
-    double maxAngularVelocity) {
+    double maxAngularVelocityRadPerSec) {
 
   /** Default angular velocity limit, high enough for shooter backspin. */
-  public static final double DEFAULT_MAX_ANGULAR_VELOCITY = 500.0;
+  public static final double DEFAULT_MAX_ANGULAR_VELOCITY_RAD_PER_SEC = 500.0;
 
   /** Validates non-null fields. Numeric ranges are validated natively on registration. */
   public GamePieceTypeSpec {
@@ -43,75 +43,80 @@ public record GamePieceTypeSpec(
    * A spherical piece.
    *
    * @param name unique type name
-   * @param radius radius (m)
-   * @param mass mass (kg)
+   * @param radiusMeters radius
+   * @param massKg mass
    * @param material surface material
    * @return spec
    */
   public static GamePieceTypeSpec sphere(
-      String name, double radius, double mass, Material material) {
+      String name, double radiusMeters, double massKg, Material material) {
     return new GamePieceTypeSpec(
         name,
         GamePieceShape.SPHERE,
-        radius,
+        radiusMeters,
         0,
         0,
         0,
         0,
-        mass,
+        massKg,
         material,
-        DEFAULT_MAX_ANGULAR_VELOCITY);
+        DEFAULT_MAX_ANGULAR_VELOCITY_RAD_PER_SEC);
   }
 
   /**
    * A cylindrical piece with its axis along Z.
    *
    * @param name unique type name
-   * @param radius radius (m)
-   * @param halfHeight half height (m)
-   * @param mass mass (kg)
+   * @param radiusMeters radius
+   * @param halfHeightMeters half height
+   * @param massKg mass
    * @param material surface material
    * @return spec
    */
   public static GamePieceTypeSpec cylinder(
-      String name, double radius, double halfHeight, double mass, Material material) {
+      String name, double radiusMeters, double halfHeightMeters, double massKg, Material material) {
     return new GamePieceTypeSpec(
         name,
         GamePieceShape.CYLINDER,
-        radius,
-        halfHeight,
+        radiusMeters,
+        halfHeightMeters,
         0,
         0,
         0,
-        mass,
+        massKg,
         material,
-        DEFAULT_MAX_ANGULAR_VELOCITY);
+        DEFAULT_MAX_ANGULAR_VELOCITY_RAD_PER_SEC);
   }
 
   /**
    * A box-shaped piece.
    *
    * @param name unique type name
-   * @param halfX half extent x (m)
-   * @param halfY half extent y (m)
-   * @param halfZ half extent z (m)
-   * @param mass mass (kg)
+   * @param halfXMeters half extent x
+   * @param halfYMeters half extent y
+   * @param halfZMeters half extent z
+   * @param massKg mass
    * @param material surface material
    * @return spec
    */
   public static GamePieceTypeSpec box(
-      String name, double halfX, double halfY, double halfZ, double mass, Material material) {
+      String name,
+      double halfXMeters,
+      double halfYMeters,
+      double halfZMeters,
+      double massKg,
+      Material material) {
     return new GamePieceTypeSpec(
         name,
         GamePieceShape.BOX,
         0,
         0,
-        halfX,
-        halfY,
-        halfZ,
-        mass,
+        halfXMeters,
+        halfYMeters,
+        halfZMeters,
+        massKg,
         material,
-        DEFAULT_MAX_ANGULAR_VELOCITY);
+        DEFAULT_MAX_ANGULAR_VELOCITY_RAD_PER_SEC);
   }
 
   /**
@@ -120,16 +125,16 @@ public record GamePieceTypeSpec(
    * @param value limit in rad/s
    * @return modified copy
    */
-  public GamePieceTypeSpec withMaxAngularVelocity(double value) {
+  public GamePieceTypeSpec withMaxAngularVelocityRadPerSec(double value) {
     return new GamePieceTypeSpec(
         name,
         shape,
-        radius,
-        halfHeight,
-        halfExtentX,
-        halfExtentY,
-        halfExtentZ,
-        mass,
+        radiusMeters,
+        halfHeightMeters,
+        halfExtentXMeters,
+        halfExtentYMeters,
+        halfExtentZMeters,
+        massKg,
         material,
         value);
   }

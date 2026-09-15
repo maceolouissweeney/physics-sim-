@@ -1,9 +1,12 @@
 # Swerve quickstart
 
 Simulate a swerve robot in a WPILib Java project. Model background: [models/swerve.md](../models/swerve.md).
+frcsim targets CTRE Phoenix 6 hardware; REV motor controllers are not supported.
 
-> Status: the frcsim core and `frcsim-wpilib` APIs below are tested. The CTRE and REV snippets are
-> **recipes, not yet compiled against the vendor libraries** (tracked in IMPLEMENTATION_PLAN P5.6).
+> Status: the frcsim core and `frcsim-wpilib` APIs below are tested. The CTRE snippet is a manual recipe; the
+> `frcsim-ctre` module (IMPLEMENTATION_PLAN P2.14) will do this wiring for a Phoenix 6 `SwerveDrivetrain`.
+
+Every quantity with a unit carries it in its name (`wheelRadiusMeters`, `driveRotorPositionRadians`, ...).
 
 ## 1. Create the world and robot
 
@@ -22,14 +25,15 @@ public class DriveSim {
 
     // Describe your drivetrain (Phoenix-style config objects: set the fields you know).
     SwerveModuleConfig module = new SwerveModuleConfig();
-    module.driveMotor = WpilibMotors.fromDCMotor(DCMotor.getKrakenX60Foc(1), 6.0e-5);
-    module.driveGearRatio = 6.12;          // L3
-    module.wheelRadius = Units.inchesToMeters(2);
-    module.tireStaticFriction = 1.2;       // measure with a pull test if you can
+    module.driveMotor = DcMotorSpec.krakenX60Foc(1);
+    module.driveGearRatio = 6.12;                          // L3
+    module.couplingGearRatio = 50.0 / 14.0;                // TunerConstants kCoupleRatio
+    module.wheelRadiusMeters = Units.inchesToMeters(2);
+    module.tireStaticFriction = 1.2;                       // measure with a pull test if you can
 
     SwerveDriveConfig config = SwerveDriveConfig.rectangular(0.57, 0.57, module);
-    config.mass = 58;
-    config.comHeight = 0.20;
+    config.massKg = 58;
+    config.comHeightMeters = 0.20;
     drive = SimSwerveDrive.create(world, config, startPose);
   }
 }
@@ -37,18 +41,18 @@ public class DriveSim {
 
 ## 2. Every simulation period
 
-The motor controllers own the voltages. Feed them encoder values from the sim, take their applied
-voltages back, step the world once.
+The motor controllers own the voltages. Take their applied voltages, step the world once, then write the
+simulated sensor values back.
 
 ```java
 @Override
 public void simulationPeriodic() {
   for (int m = 0; m < 4; m++) {
-    drive.setModuleVoltages(m, driveMotorVolts(m), steerMotorVolts(m)); // from your motor sim states
+    drive.setModuleCommandVolts(m, driveMotorVolts(m), steerMotorVolts(m)); // from TalonFX sim states
   }
-  world.step(0.020);                                                    // 5 physics substeps
+  world.step(0.020);                                                        // 5 physics substeps
 
-  RoboRioSim.setVInVoltage(drive.getBatteryVoltage());                  // battery sag for the whole robot
+  RoboRioSim.setVInVoltage(drive.getBatteryVolts());                        // battery sag for the whole robot
   // ...feed encoders (below), gyro, and telemetry
 }
 ```
@@ -57,31 +61,26 @@ public void simulationPeriodic() {
 ```java
 SwerveRobot robot = drive.getRobot();
 TalonFXSimState driveSim = driveMotor.getSimState();
-driveSim.setSupplyVoltage(drive.getBatteryVoltage());
-double driveVolts = driveSim.getMotorVoltage();                // input to frcsim
+driveSim.Orientation = driveInverted ? ChassisReference.Clockwise_Positive : ChassisReference.CounterClockwise_Positive;
+driveSim.setSupplyVoltage(drive.getBatteryVolts());
+double driveVolts = driveSim.getMotorVoltage();                           // input to frcsim
 // after world.step():
-driveSim.setRawRotorPosition(Units.radiansToRotations(robot.driveRotorPosition(m)));
-driveSim.setRotorVelocity(Units.radiansToRotations(robot.driveRotorVelocity(m)));
-steerSim.setRawRotorPosition(Units.radiansToRotations(robot.steerRotorPosition(m)));
-cancoder.getSimState().setRawPosition(Units.radiansToRotations(robot.steerAngle(m)));
+driveSim.setRawRotorPosition(Units.radiansToRotations(robot.driveRotorPositionRadians(m)));
+driveSim.setRotorVelocity(Units.radiansToRotations(robot.driveRotorVelocityRadPerSec(m)));
+steerSim.setRawRotorPosition(Units.radiansToRotations(robot.steerRotorPositionRadians(m)));
+steerSim.setRotorVelocity(Units.radiansToRotations(robot.steerRotorVelocityRadPerSec(m)));
+cancoder.getSimState().setRawPosition(Units.radiansToRotations(robot.steerAngleRadians(m)));
+cancoder.getSimState().setVelocity(Units.radiansToRotations(robot.steerVelocityRadPerSec(m)));
 pigeon.getSimState().setRawYaw(Math.toDegrees(drive.getGyroYawRadians()));
+pigeon.getSimState().setAngularVelocityZ(Math.toDegrees(drive.getGyroYawRateRadPerSec()));
 ```
-Invert signs to match your motor inversion settings: frcsim's positive drive voltage rolls the wheel
-forward, and positive steer voltage turns the module counterclockwise.
-
-### REV (SparkMax/SparkFlex)
-```java
-SparkSim driveSim = new SparkSim(driveSpark, DCMotor.getNeoVortex(1));
-double driveVolts = driveSim.getAppliedOutput() * drive.getBatteryVoltage();
-// after world.step(): SparkSim.iterate expects mechanism velocity in RPM (after conversion factors)
-double wheelRpm = Units.radiansPerSecondToRotationsPerMinute(robot.driveRotorVelocity(m) / driveGearRatio);
-driveSim.iterate(wheelRpm * velocityConversionFactor, drive.getBatteryVoltage(), 0.020);
-```
+frcsim's positive drive voltage rolls the wheel forward and positive steer voltage turns the module
+counterclockwise; the sim state `Orientation` fields map those to your motor and encoder inversions.
 
 ### Plain WPILib (no vendor sim)
-Run your own PID on the sim encoders and call `setModuleVoltages` directly. For stiff steering, step the
-world in smaller increments (e.g. `world.step(0.004, 1)` five times per period) so your loop runs at 250 Hz
-like a motor controller's onboard loop.
+Run your own PID on the sim encoders and call `setModuleCommandVolts` directly. For stiff steering, step
+the world in smaller increments (e.g. `world.step(0.004, 1)` five times per period) so your loop runs at
+250 Hz like a motor controller's onboard loop.
 
 ## 3. Odometry vs ground truth
 

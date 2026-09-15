@@ -6,7 +6,7 @@ import org.frcsim.jni.FrcSimJNI;
 import org.frcsim.jni.NativeLoader;
 
 /**
- * A physics world: field, game pieces, and (from Phase 2) robots.
+ * A physics world: field, game pieces, kinematic bodies, and robots.
  *
  * <p>Owns native memory. Close it (or use try-with-resources) when done; a {@link Cleaner} frees it
  * if the object becomes unreachable, but relying on that delays release. All views returned by this
@@ -75,11 +75,11 @@ public final class SimWorld implements AutoCloseable {
             config.maxContactConstraints(),
             config.workerThreads(),
             config.tempAllocatorBytes(),
-            -config.gravity(),
+            -config.gravityMetersPerSecSq(),
             config.maxPieces(),
-            (float) config.minVelocityForRestitution(),
-            (float) config.timeBeforeSleep(),
-            (float) config.sleepVelocityThreshold(),
+            (float) config.minVelocityForRestitutionMetersPerSec(),
+            (float) config.timeBeforeSleepSeconds(),
+            (float) config.sleepVelocityThresholdMetersPerSec(),
             config.solverVelocitySteps(),
             config.solverPositionSteps());
     return new SimWorld(config, pointer);

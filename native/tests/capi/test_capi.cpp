@@ -28,7 +28,7 @@ TEST(CApi, CreateStepDestroy) {
     for (int i = 0; i < 50; ++i) {
         ASSERT_EQ(frcsim_world_step(world, 0.020, 5), FRCSIM_OK) << frcsim_last_error();
     }
-    EXPECT_NEAR(frcsim_world_time(world), 1.0, 1e-12);
+    EXPECT_NEAR(frcsim_world_time_seconds(world), 1.0, 1e-12);
     frcsim_world_destroy(world);
 }
 
@@ -37,7 +37,7 @@ TEST(CApi, CreateWithExplicitConfig) {
     frcsim_world_config_init(&config);
     EXPECT_EQ(config.struct_size, sizeof(frcsim_world_config));
     config.worker_threads = 2;
-    config.gravity_z = -1.0;
+    config.gravity_z_meters_per_sec_sq = -1.0;
 
     frcsim_world* world = nullptr;
     ASSERT_EQ(frcsim_world_create(&config, &world), FRCSIM_OK) << frcsim_last_error();
@@ -77,7 +77,7 @@ TEST(CApi, InvalidStepArgumentsAreRejected) {
     EXPECT_EQ(frcsim_world_step(world, -0.02, 5), FRCSIM_ERR_INVALID_ARGUMENT);
     EXPECT_NE(std::string(frcsim_last_error()).find("dt"), std::string::npos);
     EXPECT_EQ(frcsim_world_step(world, 0.02, 0), FRCSIM_ERR_INVALID_ARGUMENT);
-    EXPECT_DOUBLE_EQ(frcsim_world_time(world), 0.0);
+    EXPECT_DOUBLE_EQ(frcsim_world_time_seconds(world), 0.0);
     frcsim_world_destroy(world);
 }
 
@@ -92,7 +92,7 @@ TEST(CApi, SuccessClearsLastError) {
 
 TEST(CApi, NullHandlesAreSafe) {
     frcsim_world_destroy(nullptr);
-    EXPECT_DOUBLE_EQ(frcsim_world_time(nullptr), 0.0);
+    EXPECT_DOUBLE_EQ(frcsim_world_time_seconds(nullptr), 0.0);
     frcsim_world_config_init(nullptr);
 }
 

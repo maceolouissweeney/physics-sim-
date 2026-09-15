@@ -37,8 +37,8 @@ All notable changes to this project are documented here. Format follows
   - Performance report `docs/perf/phase1.md`.
 
 - **Phase 2 (swerve drivetrain):**
-  - DC motor model with WPILib `DCMotor` constants and presets (Kraken X60/X44 ± FOC, Falcon 500 ± FOC,
-    NEO, NEO Vortex): implicit back-EMF, stator/supply current limits with effective-voltage supply
+  - DC motor model with WPILib `DCMotor` constants and CTRE presets (Kraken X60/X44 ± FOC, Falcon 500 ± FOC,
+    Minion): implicit back-EMF, stator/supply current limits with effective-voltage supply
     current, brake/coast, overshoot-free friction.
   - Battery with internal resistance and brownout hysteresis (outputs disabled during brownout).
   - Tire model: static→kinetic friction curve, friction circle, ground material factor.
@@ -63,6 +63,20 @@ All notable changes to this project are documented here. Format follows
   can't squeeze through.
 
 ### Changed
+- **Unit-suffixed names everywhere (D31):** every C++ field/parameter/local, C ABI struct field and
+  parameter, JNI parameter, and Java field/accessor/parameter with a unit now names it (`xMeters`,
+  `yawRadians`, `driveCommandVolts`, `massKg`, `x_meters`, `drive_command_volts`, ...). Examples:
+  `SwerveRobot.x()` → `xMeters()`, `setModuleVoltages` → `setModuleCommandVolts`,
+  `driveRotorPosition(m)` → `driveRotorPositionRadians(m)`, `GamePieces.copyPositions` →
+  `copyPositionsMeters`, `WorldConfig.gravity` → `gravityMetersPerSecSq`, `frcsim_world_time` →
+  `frcsim_world_time_seconds`. Shared-memory layouts are unchanged.
+- **REV support removed (D32):** NEO and NEO Vortex presets (`FRCSIM_MOTOR_NEO*`, `DcMotorSpec.neo*`) and
+  the SparkSim recipe are gone; `FRCSIM_MOTOR_MINION` / `DcMotorSpec.minion` added.
+- Swerve modules gained `couplingGearRatio` (CTRE `CouplingGearRatio`): drive rotor position/velocity
+  include module rotation × ratio, and `SimSwerveDrive` removes it for odometry like CTRE does.
+- `GamePieces.copyPositionsMeters(PieceState, float[])` copies only pieces in one state (telemetry).
+- C ABI and JNI implementations split into focused files (`capi_world/pieces/robots.cpp`,
+  `jni_world/pieces/robots.cpp` + shared internal headers).
 - Java `WorldConfig` is now built with `WorldConfig.builder()` (was a record with `with*` methods).
 - Java `SimWorld.timeSeconds()` reads shared memory instead of calling into native code.
 - Default physics worker threads changed from 0 (single-threaded) to 2: dense piles run about 2× faster (D24).

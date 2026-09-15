@@ -18,7 +18,7 @@ TEST(Field, GroundTopSurfaceIsAtHeight) {
     const PieceTypeId fuel = test::addFuelType(world);
     const std::uint32_t piece = world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, 1.0f));
     test::runPeriods(world, 150);
-    EXPECT_NEAR(world.pieces().position(piece).GetZ(), 0.25f + test::kFuelRadius, 0.005f);
+    EXPECT_NEAR(world.pieces().positionMeters(piece).GetZ(), 0.25f + test::kFuelRadiusMeters, 0.005f);
 }
 
 TEST(Field, WallStopsRollingBall) {
@@ -28,14 +28,14 @@ TEST(Field, WallStopsRollingBall) {
                          world.materials().require("polycarbonate"));
     const PieceTypeId fuel = test::addFuelType(world);
     const std::uint32_t piece =
-        world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, test::kFuelRadius), JPH::Vec3(3.0f, 0, 0));
+        world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, test::kFuelRadiusMeters), JPH::Vec3(3.0f, 0, 0));
 
     float maxX = 0.0f;
     for (int i = 0; i < 100; ++i) {
         test::runPeriods(world, 1);
-        maxX = std::max(maxX, world.pieces().position(piece).GetX());
+        maxX = std::max(maxX, world.pieces().positionMeters(piece).GetX());
     }
-    EXPECT_LT(maxX, 1.95f - test::kFuelRadius + 0.02f) << "ball passed through the wall";
+    EXPECT_LT(maxX, 1.95f - test::kFuelRadiusMeters + 0.02f) << "ball passed through the wall";
     EXPECT_GT(maxX, 1.5f) << "ball never reached the wall";
 }
 
@@ -47,7 +47,7 @@ TEST(Field, CylinderAxisIsVertical) {
     const PieceTypeId fuel = test::addFuelType(world);
     const std::uint32_t piece = world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, 2.0f));
     test::runPeriods(world, 100);
-    EXPECT_NEAR(world.pieces().position(piece).GetZ(), 1.0f + test::kFuelRadius, 0.01f)
+    EXPECT_NEAR(world.pieces().positionMeters(piece).GetZ(), 1.0f + test::kFuelRadiusMeters, 0.01f)
         << "ball should rest on the top face of a Z-axis cylinder";
 }
 
@@ -62,7 +62,7 @@ TEST(Field, ConvexHullIsSolid) {
     const PieceTypeId fuel = test::addFuelType(world);
     const std::uint32_t piece = world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, 2.0f));
     test::runPeriods(world, 100);
-    EXPECT_NEAR(world.pieces().position(piece).GetZ(), 1.0f + test::kFuelRadius, 0.01f);
+    EXPECT_NEAR(world.pieces().positionMeters(piece).GetZ(), 1.0f + test::kFuelRadiusMeters, 0.01f);
 }
 
 TEST(Field, RejectsInvalidGeometry) {
@@ -94,9 +94,9 @@ TEST(Field, ClearRemovesBodies) {
 
 TEST(Field, BoundsValidation) {
     World world(WorldConfig{});
-    EXPECT_THROW(world.field().setBounds(JPH::AABox(JPH::Vec3(1, 1, 1), JPH::Vec3(0, 0, 0))), std::invalid_argument);
-    world.field().setBounds(JPH::AABox(JPH::Vec3(0, 0, 0), JPH::Vec3(1, 1, 1)));
-    EXPECT_FLOAT_EQ(world.field().bounds().mMax.GetX(), 1.0f);
+    EXPECT_THROW(world.field().setBoundsMeters(JPH::AABox(JPH::Vec3(1, 1, 1), JPH::Vec3(0, 0, 0))), std::invalid_argument);
+    world.field().setBoundsMeters(JPH::AABox(JPH::Vec3(0, 0, 0), JPH::Vec3(1, 1, 1)));
+    EXPECT_FLOAT_EQ(world.field().boundsMeters().mMax.GetX(), 1.0f);
 }
 
 } // namespace

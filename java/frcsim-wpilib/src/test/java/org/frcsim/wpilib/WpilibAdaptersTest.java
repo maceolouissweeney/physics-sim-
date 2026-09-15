@@ -16,14 +16,15 @@ import org.frcsim.SwerveDriveConfig;
 import org.junit.jupiter.api.Test;
 
 class WpilibAdaptersTest {
-  /** Motor constants exactly as frcsim derives them natively (docs/models/swerve.md). */
+  /** Motor constants exactly as frcsim derives them natively: {R ohms, Kv rad/s/V, Kt N·m/A}. */
   private static double[] constants(DcMotorSpec s) {
-    double stallCurrent = s.stallCurrent() * s.count();
-    double freeCurrent = s.freeCurrent() * s.count();
-    double r = s.nominalVoltage() / stallCurrent;
-    double kv = s.freeSpeed() / (s.nominalVoltage() - r * freeCurrent);
-    double kt = s.stallTorque() * s.count() / stallCurrent;
-    return new double[] {r, kv, kt};
+    double stallCurrentAmps = s.stallCurrentAmps() * s.count();
+    double freeCurrentAmps = s.freeCurrentAmps() * s.count();
+    double resistanceOhms = s.nominalVolts() / stallCurrentAmps;
+    double kvRadPerSecPerVolt =
+        s.freeSpeedRadPerSec() / (s.nominalVolts() - resistanceOhms * freeCurrentAmps);
+    double ktNewtonMetersPerAmp = s.stallTorqueNewtonMeters() * s.count() / stallCurrentAmps;
+    return new double[] {resistanceOhms, kvRadPerSecPerVolt, ktNewtonMetersPerAmp};
   }
 
   @Test
@@ -56,7 +57,7 @@ class WpilibAdaptersTest {
         world.step(0.020);
       }
       for (int m = 0; m < 4; m++) {
-        drive.setModuleVoltages(m, 4.0, 0.0);
+        drive.setModuleCommandVolts(m, 4.0, 0.0);
       }
       for (int i = 0; i < 25; i++) {
         world.step(0.020);
@@ -70,10 +71,10 @@ class WpilibAdaptersTest {
       }
       Pose2d after = drive.getPose();
       SwerveModulePosition[] p1 = drive.getModulePositions();
-      double traveled = after.getTranslation().getDistance(before.getTranslation());
-      double encoderDistance = p1[0].distanceMeters - p0[0].distanceMeters;
-      assertTrue(traveled > 0.5, "traveled " + traveled);
-      assertEquals(traveled, encoderDistance, traveled * 0.05);
+      double traveledMeters = after.getTranslation().getDistance(before.getTranslation());
+      double encoderDistanceMeters = p1[0].distanceMeters - p0[0].distanceMeters;
+      assertTrue(traveledMeters > 0.5, "traveled " + traveledMeters);
+      assertEquals(traveledMeters, encoderDistanceMeters, traveledMeters * 0.05);
 
       ChassisSpeeds robotRelative = drive.getRobotRelativeSpeeds();
       SwerveModuleState[] states = drive.getModuleStates();

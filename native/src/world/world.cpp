@@ -36,14 +36,14 @@ void validate(const WorldConfig& config) {
     if (config.tempAllocatorBytes < 1024u * 1024u) {
         throw std::invalid_argument("temp_allocator_bytes must be >= 1 MiB");
     }
-    if (!std::isfinite(config.gravityZ)) {
-        throw std::invalid_argument("gravity_z must be finite");
+    if (!std::isfinite(config.gravityZMetersPerSecSq)) {
+        throw std::invalid_argument("gravity_z_meters_per_sec_sq must be finite");
     }
     if (config.maxPieces == 0 || config.maxPieces > config.maxBodies) {
         throw std::invalid_argument("max_pieces must be in 1..max_bodies");
     }
-    if (!nonNegativeFinite(config.minVelocityForRestitution) || !nonNegativeFinite(config.timeBeforeSleep) ||
-        !nonNegativeFinite(config.sleepVelocityThreshold)) {
+    if (!nonNegativeFinite(config.minVelocityForRestitutionMetersPerSec) ||
+        !nonNegativeFinite(config.timeBeforeSleepSeconds) || !nonNegativeFinite(config.sleepVelocityThresholdMetersPerSec)) {
         throw std::invalid_argument("restitution/sleep thresholds must be finite and >= 0");
     }
     if (config.solverVelocitySteps < 1 || config.solverVelocitySteps > kMaxSolverSteps ||
@@ -78,12 +78,12 @@ World::World(const WorldConfig& config)
       m_physics(std::make_unique<JPH::PhysicsSystem>()) {
     m_physics->Init(config.maxBodies, 0, config.maxBodyPairs, config.maxContactConstraints, m_broadPhaseLayers,
                     m_objectVsBroadPhaseFilter, m_objectPairFilter);
-    m_physics->SetGravity(JPH::Vec3(0.0f, 0.0f, static_cast<float>(config.gravityZ)));
+    m_physics->SetGravity(JPH::Vec3(0.0f, 0.0f, static_cast<float>(config.gravityZMetersPerSecSq)));
 
     JPH::PhysicsSettings settings = m_physics->GetPhysicsSettings();
-    settings.mMinVelocityForRestitution = config.minVelocityForRestitution;
-    settings.mTimeBeforeSleep = config.timeBeforeSleep;
-    settings.mPointVelocitySleepThreshold = config.sleepVelocityThreshold;
+    settings.mMinVelocityForRestitution = config.minVelocityForRestitutionMetersPerSec;
+    settings.mTimeBeforeSleep = config.timeBeforeSleepSeconds;
+    settings.mPointVelocitySleepThreshold = config.sleepVelocityThresholdMetersPerSec;
     settings.mNumVelocitySteps = config.solverVelocitySteps;
     settings.mNumPositionSteps = config.solverPositionSteps;
     m_physics->SetPhysicsSettings(settings);
@@ -105,8 +105,8 @@ void World::optimizeBroadPhase() {
     m_broadPhaseOptimized = true;
 }
 
-void World::step(double dt, int substeps) {
-    if (!(dt > 0.0) || !std::isfinite(dt)) {
+void World::step(double dtSeconds, int substeps) {
+    if (!(dtSeconds > 0.0) || !std::isfinite(dtSeconds)) {
         throw std::invalid_argument("dt must be finite and > 0");
     }
     if (substeps < 1 || substeps > kMaxSubsteps) {
@@ -118,16 +118,16 @@ void World::step(double dt, int substeps) {
         optimizeBroadPhase();
     }
 
-    const float h = static_cast<float>(dt / substeps);
+    const float substepSeconds = static_cast<float>(dtSeconds / substeps);
     for (int i = 0; i < substeps; ++i) {
-        const JPH::EPhysicsUpdateError error = m_physics->Update(h, 1, m_tempAllocator.get(), m_jobSystem.get());
+        const JPH::EPhysicsUpdateError error = m_physics->Update(substepSeconds, 1, m_tempAllocator.get(), m_jobSystem.get());
         m_stats.updateErrorFlags |= static_cast<std::uint32_t>(error);
         ++m_stats.substepCount;
     }
-    m_pieces->postStep(m_field->bounds());
-    m_robots->postStep(dt);
+    m_pieces->postStep(m_field->boundsMeters());
+    m_robots->postStep(dtSeconds);
 
-    m_stats.timeSeconds += dt;
+    m_stats.timeSeconds += dtSeconds;
     m_stats.activeBodies = m_physics->GetNumActiveBodies(JPH::EBodyType::RigidBody);
     m_stats.pieceHighWater = m_pieces->highWater();
     m_stats.piecesSimulated =

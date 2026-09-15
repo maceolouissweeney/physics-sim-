@@ -27,7 +27,7 @@ namespace {
 
 using namespace frcsim;
 
-constexpr float kFuelRadius = 0.075f;
+constexpr float kFuelRadiusMeters = 0.075f;
 constexpr float kPeriod = 0.020f;
 
 struct Options {
@@ -80,7 +80,7 @@ void spawnFuelGrid(World& world, int nx, int ny, float x0, float y0, float spaci
     for (int i = 0; i < nx; ++i) {
         for (int j = 0; j < ny; ++j) {
             xyz.insert(xyz.end(), {x0 + spacing * static_cast<float>(i), y0 + spacing * static_cast<float>(j),
-                                   kFuelRadius + 0.001f});
+                                   kFuelRadiusMeters + 0.001f});
         }
     }
     world.pieces().spawn(*world.pieceTypes().find("fuel"), xyz, {}, {});
@@ -90,10 +90,10 @@ void spawnFuelGrid(World& world, int nx, int ny, float x0, float y0, float spaci
 /// Bumper band 3-19 cm above the carpet.
 std::uint32_t addRobotStandIn(World& world, float x, float y) {
     DrivenBodies::BoxDesc desc;
-    desc.center = JPH::Vec3(x, y, 0.11f);
-    desc.halfExtents = JPH::Vec3(0.45f, 0.45f, 0.08f);
-    desc.mass = 60.0f;
-    desc.maxForce = 590.0f;
+    desc.centerMeters = JPH::Vec3(x, y, 0.11f);
+    desc.halfExtentsMeters = JPH::Vec3(0.45f, 0.45f, 0.08f);
+    desc.massKg = 60.0f;
+    desc.maxForceNewtons = 590.0f;
     desc.material = world.materials().require("bumper");
     return world.driven().addBox(desc);
 }
@@ -112,7 +112,7 @@ void driveSwerveBackAndForth(World& world, std::uint32_t index, float t, float p
     SwerveRobot& robot = world.robots().swerve(index);
     const float driveVolts = 10.0f * std::sin(0.85f * t + phase);
     for (std::size_t m = 0; m < robot.moduleCount(); ++m) {
-        const auto error = static_cast<float>(std::remainder(-robot.module(m).steerAngle, 6.283185307179586));
+        const auto error = static_cast<float>(std::remainder(-robot.module(m).steerAngleRadians, 6.283185307179586));
         robot.setModuleVoltages(m, driveVolts, std::clamp(kSteerKp * error, -12.0f, 12.0f));
     }
 }
@@ -120,7 +120,7 @@ void driveSwerveBackAndForth(World& world, std::uint32_t index, float t, float p
 /// Drives a stand-in along x(t) = center + amplitude * sin(omega * t) at fixed y.
 void followSine(World& world, std::uint32_t robot, float t, float center, float amplitude, float omega, float y) {
     constexpr float kP = 3.0f; // position correction gain, 1/s
-    const JPH::Vec3 p = world.driven().position(robot);
+    const JPH::Vec3 p = world.driven().positionMeters(robot);
     const float xTarget = center + amplitude * std::sin(omega * t);
     const float vx = amplitude * omega * std::cos(omega * t) + kP * (xTarget - p.GetX());
     world.driven().setTargetVelocity(robot, vx, kP * (y - p.GetY()), 0.0f);
@@ -255,7 +255,7 @@ Result run(const Scenario& scenario, const Options& options) {
     }
     for (std::uint32_t i = 0; i < pieces.highWater(); ++i) {
         if (pieces.state(i) == PieceState::OutOfBounds) {
-            r.outOfBoundsExits.Encapsulate(pieces.position(i));
+            r.outOfBoundsExits.Encapsulate(pieces.positionMeters(i));
         }
     }
     return r;

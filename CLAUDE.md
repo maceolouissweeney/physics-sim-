@@ -1,7 +1,8 @@
 # frcsim — High-Performance FRC Physics Simulation
 
 > Working name `frcsim`. Status: **Phases 0–1 complete; Phase 2 (swerve) implemented and tested on Windows (perf re-measurement and
-> CTRE/REV recipe verification pending); Phase 3 (field elements, REBUILT arena) next.**
+> the CTRE Phoenix 6 integration module pending); Phase 3 (field elements, REBUILT arena) next.** CTRE hardware only: REV is
+> intentionally unsupported.
 > This file is the source of truth for architecture, research, and conventions. Update it when a
 > decision changes. Task-level progress, pinned versions, and the decision log live in
 > [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md); build setup lives in
@@ -98,7 +99,7 @@ this unless benchmarks demand it.
 | Binding benchmarks | JMH (JNI overhead per `step()`, buffer read cost) |
 | Formatting | Spotless + google-java-format **1.28.0** (newest that runs on JDK 17; 1.29+ needs JDK 21) |
 | Telemetry | WPILib NT4 **struct arrays** (`Pose3d[]`, `Translation3d[]`) for AdvantageScope; AdvantageKit-friendly (`LoggableInputs` helpers) |
-| CTRE/REV integration | Examples feeding `TalonFXSimState` / `SparkSim` from our rotor outputs |
+| CTRE integration | `frcsim-ctre`: drives a Phoenix 6 `SwerveDrivetrain` from the physics sim (reads TalonFX motor voltages, writes TalonFX rotor, CANcoder, and Pigeon 2 sim states). REV hardware is not supported. |
 
 ### Distribution and CI
 | Concern | Choice |
@@ -184,7 +185,7 @@ physics-sim/
 4. **Native** writes outputs into shared output buffers: robot poses, module rotor positions and
    velocities, currents, battery voltage, piece positions (float32 xyz, packed), piece count, event
    ring buffer (scores, intakes).
-5. **Java** reads buffers (no allocation) → feeds WPILib/CTRE/REV sim states and telemetry.
+5. **Java** reads buffers (no allocation) → feeds CTRE Phoenix 6 sim states and AdvantageScope telemetry.
 
 ### Java API (current; shooter and intake are Phase 4)
 ```java
@@ -198,10 +199,10 @@ var config = SwerveDriveConfig.rectangular(0.55, 0.55, module);
 var drive = SimSwerveDrive.create(world, config, new Pose2d(2, 4, Rotation2d.kZero));
 
 // simulationPeriodic():
-drive.setModuleVoltages(m, driveVolts, steerVolts);           // shared memory, no JNI
+drive.setModuleCommandVolts(m, driveVolts, steerVolts);       // shared memory, no JNI
 world.step(0.020);                                            // the one JNI call per period
-talonSimState.setRawRotorPosition(Units.radiansToRotations(drive.getRobot().driveRotorPosition(m)));
-world.pieces().copyPositions(reusedFloatArray);               // zero-copy source, no allocation
+talonSimState.setRawRotorPosition(Units.radiansToRotations(drive.getRobot().driveRotorPositionRadians(m)));
+world.pieces().copyPositionsMeters(PieceState.ON_FIELD, reusedFloatArray); // no allocation
 ```
 See [`docs/guides/swerve-quickstart.md`](docs/guides/swerve-quickstart.md).
 
@@ -230,7 +231,7 @@ measurements (see §9 Phase 6).
 I       = (V_applied − ω_rotor / Kv) / R        then clamp: stator limit, supply limit (I_supply ≈ I·|duty|)
 τ_rotor = Kt · I
 ```
-Take `R`, `Kv`, `Kt` from WPILib `DCMotor` factories (Kraken X60 / FOC, Falcon, NEO, Vortex) passed
+Take `R`, `Kv`, `Kt` from WPILib `DCMotor` factories (Kraken X60 / X44 (+FOC), Falcon 500 (+FOC), Minion) passed
 from Java. Model the controller's brake vs. coast neutral mode (brake = shorted windings, damping
 torque `Kt·ω/(Kv·R)`).
 
@@ -436,6 +437,12 @@ scenario.
 ### General
 - SI units everywhere internally and across the C ABI (meters, kg, seconds, radians, volts, amps).
   Java adapters convert to and from WPILib `Units` at the edge.
+- **Every variable, field, parameter, and accessor with a unit carries the unit in its name**, in all
+  languages: C++/Java `xMeters`, `vxMetersPerSec`, `yawRadians`, `wzRadPerSec`, `batteryVolts`,
+  `statorCurrentAmps`, `resistanceOhms`, `massKg`, `inertiaKgMetersSq`, `torqueNewtonMeters`,
+  `forceNewtons`, `dtSeconds`, `frequencyHz`; C ABI snake_case `x_meters`, `rad_per_sec`, ...; Java
+  offset constants `YAW_RADIANS`. Unitless values (ratios, coefficients, counts, quaternions) have no
+  suffix. JSON field keys follow the same rule from schema `frcsim.field/2`.
 - Deterministic by default: fixed timestep, seeded RNG, no wall-clock reads inside the sim.
 - Keep files focused (aim < 500 lines); one concept per file.
 - Every physical constant that is a guess is marked `// CALIBRATE:` with its source.
@@ -482,7 +489,7 @@ for robots).*
 **Phase 2 — Swerve drivetrain**
 Spike: Jolt `VehicleController` suitability (decide constraint-based vs. custom implicit module
 solver). Then DcMotor, Battery, SwerveModule, tire model, steer dynamics, chassis compound shape,
-robot-robot collisions, sensors. Java `SwerveConfig` + WPILib/CTRE/REV adapters.
+robot-robot collisions, sensors. Java `SwerveDriveConfig` + WPILib/CTRE adapters.
 *Gate: all analytic validation tests in §6.1 pass; stable at 1–10 substeps; no NaNs under 10k-step
 fuzz of random voltages and collisions.*
 

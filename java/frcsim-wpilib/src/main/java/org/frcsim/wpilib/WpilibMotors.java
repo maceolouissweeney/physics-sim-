@@ -14,10 +14,10 @@ public final class WpilibMotors {
    * and Kt.
    *
    * @param motor WPILib motor model, e.g. {@code DCMotor.getKrakenX60Foc(1)}
-   * @param totalRotorInertia combined rotor inertia of all motors in the model (kg·m²)
+   * @param totalRotorInertiaKgMetersSq combined rotor inertia of all motors in the model
    * @return frcsim motor spec
    */
-  public static DcMotorSpec fromDCMotor(DCMotor motor, double totalRotorInertia) {
+  public static DcMotorSpec fromDCMotor(DCMotor motor, double totalRotorInertiaKgMetersSq) {
     Objects.requireNonNull(motor, "motor");
     return new DcMotorSpec(
         motor.nominalVoltageVolts,
@@ -26,6 +26,6 @@ public final class WpilibMotors {
         motor.freeCurrentAmps,
         motor.freeSpeedRadPerSec,
         1,
-        totalRotorInertia);
+        totalRotorInertiaKgMetersSq);
   }
 }

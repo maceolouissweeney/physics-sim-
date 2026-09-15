@@ -9,7 +9,7 @@
 namespace frcsim {
 namespace {
 
-constexpr float kPieceConvexRadius = 0.05f; // Jolt default; clamped to the shape's smallest dimension
+constexpr float kPieceConvexRadiusMeters = 0.05f; // Jolt default; clamped to the shape's smallest dimension
 
 bool positiveFinite(float value) {
     return std::isfinite(value) && value > 0.0f;
@@ -27,25 +27,25 @@ PieceTypeId PieceTypeRegistry::add(const PieceTypeDesc& desc, const MaterialTabl
     if (m_types.size() >= kMaxTypes) {
         throw CapacityExceededError("too many piece types (max " + std::to_string(kMaxTypes) + ")");
     }
-    if (!positiveFinite(desc.mass)) {
-        throw std::invalid_argument("piece type '" + desc.name + "': mass must be finite and > 0");
+    if (!positiveFinite(desc.massKg)) {
+        throw std::invalid_argument("piece type '" + desc.name + "': massKg must be finite and > 0");
     }
-    if (!positiveFinite(desc.maxAngularVelocity)) {
-        throw std::invalid_argument("piece type '" + desc.name + "': maxAngularVelocity must be finite and > 0");
+    if (!positiveFinite(desc.maxAngularVelocityRadPerSec)) {
+        throw std::invalid_argument("piece type '" + desc.name + "': maxAngularVelocityRadPerSec must be finite and > 0");
     }
-    materials.get(desc.material); // throws NotFoundError for unknown ids
+    (void)materials.get(desc.material); // throws NotFoundError for unknown ids
 
     PieceType type{desc, nullptr};
     switch (desc.shape) {
     case PieceShape::Sphere:
-        type.shape = makeSphere(desc.radius);
+        type.shape = makeSphere(desc.radiusMeters);
         break;
     case PieceShape::Cylinder:
-        type.shape = makeZCylinder(desc.radius, desc.halfHeight, kPieceConvexRadius);
+        type.shape = makeZCylinder(desc.radiusMeters, desc.halfHeightMeters, kPieceConvexRadiusMeters);
         break;
     case PieceShape::Box:
-        type.shape = makeBox(JPH::Vec3(desc.halfExtents[0], desc.halfExtents[1], desc.halfExtents[2]),
-                             kPieceConvexRadius);
+        type.shape = makeBox(JPH::Vec3(desc.halfExtentsMeters[0], desc.halfExtentsMeters[1], desc.halfExtentsMeters[2]),
+                             kPieceConvexRadiusMeters);
         break;
     default:
         throw std::invalid_argument("piece type '" + desc.name + "': unknown shape");

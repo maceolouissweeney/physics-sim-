@@ -36,18 +36,19 @@ DrivenBodies::~DrivenBodies() {
 }
 
 std::uint32_t DrivenBodies::addBox(const BoxDesc& desc) {
-    if (!positiveFinite(desc.mass) || !positiveFinite(desc.maxForce) || !positiveFinite(desc.maxTorque)) {
-        throw std::invalid_argument("driven body mass, maxForce and maxTorque must be finite and > 0");
+    if (!positiveFinite(desc.massKg) || !positiveFinite(desc.maxForceNewtons) ||
+        !positiveFinite(desc.maxTorqueNewtonMeters)) {
+        throw std::invalid_argument("driven body mass, max force and max torque must be finite and > 0");
     }
-    if (!std::isfinite(desc.yaw)) {
+    if (!std::isfinite(desc.yawRadians)) {
         throw std::invalid_argument("driven body yaw must be finite");
     }
     const Material& properties = m_materials.get(desc.material);
-    const auto shape = makeBox(desc.halfExtents, kStaticConvexRadius);
+    const auto shape = makeBox(desc.halfExtentsMeters, kStaticConvexRadiusMeters);
     const auto index = static_cast<std::uint32_t>(m_bodies.size());
 
-    JPH::BodyCreationSettings settings(shape.GetPtr(), JPH::RVec3(desc.center),
-                                       JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), desc.yaw),
+    JPH::BodyCreationSettings settings(shape.GetPtr(), JPH::RVec3(desc.centerMeters),
+                                       JPH::Quat::sRotation(JPH::Vec3::sAxisZ(), desc.yawRadians),
                                        JPH::EMotionType::Dynamic, ObjectLayers::kRobot);
     settings.mAllowedDOFs = JPH::EAllowedDOFs::Plane2D;
     settings.mGravityFactor = 0.0f;
@@ -57,7 +58,7 @@ std::uint32_t DrivenBodies::addBox(const BoxDesc& desc) {
     settings.mFriction = properties.friction;
     settings.mRestitution = properties.restitution;
     settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
-    settings.mMassPropertiesOverride.mMass = desc.mass;
+    settings.mMassPropertiesOverride.mMass = desc.massKg;
     settings.mUserData = BodyTag{BodyKind::Robot, desc.material, index}.encode();
 
     JPH::BodyInterface& bodies = m_physics.GetBodyInterfaceNoLock();
@@ -67,36 +68,38 @@ std::uint32_t DrivenBodies::addBox(const BoxDesc& desc) {
     }
     bodies.AddBody(body->GetID(), JPH::EActivation::Activate);
 
-    const float width = 2.0f * desc.halfExtents.GetX();
-    const float depth = 2.0f * desc.halfExtents.GetY();
-    m_bodies.push_back(Driven{body->GetID(), desc.mass, desc.mass * (width * width + depth * depth) / 12.0f,
-                              desc.maxForce, desc.maxTorque});
+    const float lengthMeters = 2.0f * desc.halfExtentsMeters.GetX();
+    const float widthMeters = 2.0f * desc.halfExtentsMeters.GetY();
+    m_bodies.push_back(Driven{body->GetID(), desc.massKg,
+                              desc.massKg * (lengthMeters * lengthMeters + widthMeters * widthMeters) / 12.0f,
+                              desc.maxForceNewtons, desc.maxTorqueNewtonMeters});
     return index;
 }
 
-void DrivenBodies::setTargetVelocity(std::uint32_t index, float vx, float vy, float yawRate) {
-    if (!std::isfinite(vx) || !std::isfinite(vy) || !std::isfinite(yawRate)) {
+void DrivenBodies::setTargetVelocity(std::uint32_t index, float vxMetersPerSec, float vyMetersPerSec,
+                                     float yawRateRadPerSec) {
+    if (!std::isfinite(vxMetersPerSec) || !std::isfinite(vyMetersPerSec) || !std::isfinite(yawRateRadPerSec)) {
         throw std::invalid_argument("target velocity must be finite");
     }
     require(index);
     Driven& driven = m_bodies[index];
-    driven.targetVx = vx;
-    driven.targetVy = vy;
-    driven.targetYawRate = yawRate;
+    driven.targetVxMetersPerSec = vxMetersPerSec;
+    driven.targetVyMetersPerSec = vyMetersPerSec;
+    driven.targetYawRateRadPerSec = yawRateRadPerSec;
 }
 
-JPH::Vec3 DrivenBodies::position(std::uint32_t index) const {
+JPH::Vec3 DrivenBodies::positionMeters(std::uint32_t index) const {
     return JPH::Vec3(m_physics.GetBodyInterfaceNoLock().GetPosition(require(index).body));
 }
 
-JPH::Vec3 DrivenBodies::velocity(std::uint32_t index) const {
+JPH::Vec3 DrivenBodies::velocityMetersPerSec(std::uint32_t index) const {
     return m_physics.GetBodyInterfaceNoLock().GetLinearVelocity(require(index).body);
 }
 
 void DrivenBodies::OnStep(const JPH::PhysicsStepListenerContext& context) {
     // Runs inside PhysicsSystem::Update with all bodies locked: use the no-lock interface.
-    const float h = context.mDeltaTime;
-    if (h <= 0.0f) {
+    const float dtSeconds = context.mDeltaTime;
+    if (dtSeconds <= 0.0f) {
         return;
     }
     const JPH::BodyLockInterfaceNoLock& locks = m_physics.GetBodyLockInterfaceNoLock();
@@ -105,18 +108,21 @@ void DrivenBodies::OnStep(const JPH::PhysicsStepListenerContext& context) {
         if (body == nullptr) {
             continue;
         }
-        const JPH::Vec3 v = body->GetLinearVelocity();
-        JPH::Vec3 force((driven.targetVx - v.GetX()) * driven.mass / h, (driven.targetVy - v.GetY()) * driven.mass / h,
-                        0.0f);
-        const float magnitude = force.Length();
-        if (magnitude > driven.maxForce) {
-            force *= driven.maxForce / magnitude;
+        const JPH::Vec3 velocityMetersPerSec = body->GetLinearVelocity();
+        JPH::Vec3 forceNewtons((driven.targetVxMetersPerSec - velocityMetersPerSec.GetX()) * driven.massKg / dtSeconds,
+                               (driven.targetVyMetersPerSec - velocityMetersPerSec.GetY()) * driven.massKg / dtSeconds,
+                               0.0f);
+        const float magnitudeNewtons = forceNewtons.Length();
+        if (magnitudeNewtons > driven.maxForceNewtons) {
+            forceNewtons *= driven.maxForceNewtons / magnitudeNewtons;
         }
-        body->AddForce(force);
+        body->AddForce(forceNewtons);
 
-        const float yawRateError = driven.targetYawRate - body->GetAngularVelocity().GetZ();
-        const float torque = std::clamp(yawRateError * driven.inertiaZ / h, -driven.maxTorque, driven.maxTorque);
-        body->AddTorque(JPH::Vec3(0.0f, 0.0f, torque));
+        const float yawRateErrorRadPerSec = driven.targetYawRateRadPerSec - body->GetAngularVelocity().GetZ();
+        const float torqueNewtonMeters =
+            std::clamp(yawRateErrorRadPerSec * driven.yawInertiaKgMetersSq / dtSeconds, -driven.maxTorqueNewtonMeters,
+                       driven.maxTorqueNewtonMeters);
+        body->AddTorque(JPH::Vec3(0.0f, 0.0f, torqueNewtonMeters));
     }
 }
 

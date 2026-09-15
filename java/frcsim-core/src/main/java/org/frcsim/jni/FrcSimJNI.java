@@ -40,11 +40,11 @@ public final class FrcSimJNI {
    * @param maxContactConstraints contact constraint capacity
    * @param workerThreads worker threads (0 single-threaded, -1 auto)
    * @param tempAllocatorBytes per-step scratch memory
-   * @param gravityZ gravity along +Z in m/s²
+   * @param gravityZMetersPerSecSq gravity along +Z
    * @param maxPieces game piece capacity
-   * @param minVelocityForRestitution m/s below which impacts don't bounce
-   * @param timeBeforeSleep seconds at rest before sleeping
-   * @param sleepVelocityThreshold m/s considered at rest
+   * @param minVelocityForRestitutionMetersPerSec impacts slower than this don't bounce
+   * @param timeBeforeSleepSeconds time at rest before sleeping
+   * @param sleepVelocityThresholdMetersPerSec velocity considered at rest
    * @param solverVelocitySteps solver velocity iterations
    * @param solverPositionSteps solver position iterations
    * @return opaque native handle, never 0
@@ -55,11 +55,11 @@ public final class FrcSimJNI {
       int maxContactConstraints,
       int workerThreads,
       int tempAllocatorBytes,
-      double gravityZ,
+      double gravityZMetersPerSecSq,
       int maxPieces,
-      float minVelocityForRestitution,
-      float timeBeforeSleep,
-      float sleepVelocityThreshold,
+      float minVelocityForRestitutionMetersPerSec,
+      float timeBeforeSleepSeconds,
+      float sleepVelocityThresholdMetersPerSec,
       int solverVelocitySteps,
       int solverPositionSteps);
 
@@ -149,23 +149,23 @@ public final class FrcSimJNI {
    * Adds a ground slab.
    *
    * @param world native handle
-   * @param height top surface height
+   * @param heightMeters top surface height
    * @param material material id
    * @return field primitive index
    */
-  public static native int fieldAddGround(long world, float height, int material);
+  public static native int fieldAddGround(long world, float heightMeters, int material);
 
   /**
    * Adds a static box.
    *
    * @param world native handle
    * @param name primitive name
-   * @param cx center x
-   * @param cy center y
-   * @param cz center z
-   * @param hx half extent x
-   * @param hy half extent y
-   * @param hz half extent z
+   * @param centerXMeters center x
+   * @param centerYMeters center y
+   * @param centerZMeters center z
+   * @param halfXMeters half extent x
+   * @param halfYMeters half extent y
+   * @param halfZMeters half extent z
    * @param qx rotation quaternion x
    * @param qy rotation quaternion y
    * @param qz rotation quaternion z
@@ -176,12 +176,12 @@ public final class FrcSimJNI {
   public static native int fieldAddBox(
       long world,
       String name,
-      float cx,
-      float cy,
-      float cz,
-      float hx,
-      float hy,
-      float hz,
+      float centerXMeters,
+      float centerYMeters,
+      float centerZMeters,
+      float halfXMeters,
+      float halfYMeters,
+      float halfZMeters,
       float qx,
       float qy,
       float qz,
@@ -192,15 +192,21 @@ public final class FrcSimJNI {
    * Sets field bounds.
    *
    * @param world native handle
-   * @param minX min x
-   * @param minY min y
-   * @param minZ min z
-   * @param maxX max x
-   * @param maxY max y
-   * @param maxZ max z
+   * @param minXMeters min x
+   * @param minYMeters min y
+   * @param minZMeters min z
+   * @param maxXMeters max x
+   * @param maxYMeters max y
+   * @param maxZMeters max z
    */
   public static native void fieldSetBounds(
-      long world, float minX, float minY, float minZ, float maxX, float maxY, float maxZ);
+      long world,
+      float minXMeters,
+      float minYMeters,
+      float minZMeters,
+      float maxXMeters,
+      float maxYMeters,
+      float maxZMeters);
 
   // ---- Game pieces --------------------------------------------------------------------------
 
@@ -210,28 +216,28 @@ public final class FrcSimJNI {
    * @param world native handle
    * @param name unique name
    * @param shape shape code
-   * @param radius radius
-   * @param halfHeight cylinder half height
-   * @param hx box half extent x
-   * @param hy box half extent y
-   * @param hz box half extent z
-   * @param mass mass in kg
+   * @param radiusMeters radius
+   * @param halfHeightMeters cylinder half height
+   * @param halfXMeters box half extent x
+   * @param halfYMeters box half extent y
+   * @param halfZMeters box half extent z
+   * @param massKg mass
    * @param material material id
-   * @param maxAngularVelocity max angular velocity in rad/s
+   * @param maxAngularVelocityRadPerSec max angular velocity
    * @return piece type id
    */
   public static native int pieceTypeAdd(
       long world,
       String name,
       int shape,
-      float radius,
-      float halfHeight,
-      float hx,
-      float hy,
-      float hz,
-      float mass,
+      float radiusMeters,
+      float halfHeightMeters,
+      float halfXMeters,
+      float halfYMeters,
+      float halfZMeters,
+      float massKg,
       int material,
-      float maxAngularVelocity);
+      float maxAngularVelocityRadPerSec);
 
   /**
    * Finds a piece type.
@@ -247,12 +253,16 @@ public final class FrcSimJNI {
    *
    * @param world native handle
    * @param type piece type id
-   * @param positionsXyz xyz triples
-   * @param velocitiesXyz xyz triples or null
+   * @param positionsXyzMeters xyz triples
+   * @param velocitiesXyzMetersPerSec xyz triples or null
    * @param outIndices receives indices, or null
    */
   public static native void piecesSpawn(
-      long world, int type, float[] positionsXyz, float[] velocitiesXyz, int[] outIndices);
+      long world,
+      int type,
+      float[] positionsXyzMeters,
+      float[] velocitiesXyzMetersPerSec,
+      int[] outIndices);
 
   /**
    * Despawns a piece.
@@ -276,31 +286,31 @@ public final class FrcSimJNI {
    *
    * @param world native handle
    * @param index piece index
-   * @param x position x
-   * @param y position y
-   * @param z position z
-   * @param vx linear velocity x
-   * @param vy linear velocity y
-   * @param vz linear velocity z
-   * @param wx angular velocity x
-   * @param wy angular velocity y
-   * @param wz angular velocity z
+   * @param xMeters position x
+   * @param yMeters position y
+   * @param zMeters position z
+   * @param vxMetersPerSec linear velocity x
+   * @param vyMetersPerSec linear velocity y
+   * @param vzMetersPerSec linear velocity z
+   * @param wxRadPerSec angular velocity x
+   * @param wyRadPerSec angular velocity y
+   * @param wzRadPerSec angular velocity z
    */
   public static native void pieceTeleport(
       long world,
       int index,
-      float x,
-      float y,
-      float z,
-      float vx,
-      float vy,
-      float vz,
-      float wx,
-      float wy,
-      float wz);
+      float xMeters,
+      float yMeters,
+      float zMeters,
+      float vxMetersPerSec,
+      float vyMetersPerSec,
+      float vzMetersPerSec,
+      float wxRadPerSec,
+      float wyRadPerSec,
+      float wzRadPerSec);
 
   /**
-   * Direct buffer over piece positions (3 floats per index, native byte order).
+   * Direct buffer over piece positions in meters (3 floats per index, native byte order).
    *
    * @param world native handle
    * @return buffer valid until the world is destroyed
@@ -324,9 +334,9 @@ public final class FrcSimJNI {
    * @param robotParams packed robot fields ({@code SwerveDriveConfig.packRobot})
    * @param bumperMaterial bumper material id
    * @param moduleParams packed modules ({@code SwerveDriveConfig.packModules})
-   * @param x field x
-   * @param y field y
-   * @param yaw heading
+   * @param xMeters field x
+   * @param yMeters field y
+   * @param yawRadians heading
    * @return robot index
    */
   public static native int robotAddSwerve(
@@ -334,9 +344,9 @@ public final class FrcSimJNI {
       float[] robotParams,
       int bumperMaterial,
       float[] moduleParams,
-      float x,
-      float y,
-      float yaw);
+      float xMeters,
+      float yMeters,
+      float yawRadians);
 
   /**
    * Direct buffer over a robot's {@code frcsim_swerve_robot_io} block (native byte order).
@@ -352,16 +362,17 @@ public final class FrcSimJNI {
    *
    * @param world native handle
    * @param robot robot index
-   * @param x field x
-   * @param y field y
-   * @param yaw heading
+   * @param xMeters field x
+   * @param yMeters field y
+   * @param yawRadians heading
    */
-  public static native void robotResetPose(long world, int robot, float x, float y, float yaw);
+  public static native void robotResetPose(
+      long world, int robot, float xMeters, float yMeters, float yawRadians);
 
   /**
-   * Native robot I/O layout: {@code [robot size, yaw, qx, vx, wx, battery voltage, brownout, module
+   * Native robot I/O layout: {@code [robot size, yaw, qx, vx, wx, battery volts, brownout, module
    * count, modules, module size, drive rotor position, steer angle, drive rotor velocity, steer
-   * velocity, drive applied voltage, normal force, slip speed]}.
+   * velocity, drive applied volts, normal force, slip speed, gyro yaw]}.
    *
    * @return layout array
    */
@@ -373,12 +384,12 @@ public final class FrcSimJNI {
    * Adds a kinematic box.
    *
    * @param world native handle
-   * @param cx center x
-   * @param cy center y
-   * @param cz center z
-   * @param hx half extent x
-   * @param hy half extent y
-   * @param hz half extent z
+   * @param centerXMeters center x
+   * @param centerYMeters center y
+   * @param centerZMeters center z
+   * @param halfXMeters half extent x
+   * @param halfYMeters half extent y
+   * @param halfZMeters half extent z
    * @param qx rotation quaternion x
    * @param qy rotation quaternion y
    * @param qz rotation quaternion z
@@ -388,12 +399,12 @@ public final class FrcSimJNI {
    */
   public static native int kinematicAddBox(
       long world,
-      float cx,
-      float cy,
-      float cz,
-      float hx,
-      float hy,
-      float hz,
+      float centerXMeters,
+      float centerYMeters,
+      float centerZMeters,
+      float halfXMeters,
+      float halfYMeters,
+      float halfZMeters,
       float qx,
       float qy,
       float qz,
@@ -405,9 +416,9 @@ public final class FrcSimJNI {
    *
    * @param world native handle
    * @param index kinematic body index
-   * @param x target x
-   * @param y target y
-   * @param z target z
+   * @param xMeters target x
+   * @param yMeters target y
+   * @param zMeters target z
    * @param qx target rotation x
    * @param qy target rotation y
    * @param qz target rotation z
@@ -417,9 +428,9 @@ public final class FrcSimJNI {
   public static native void kinematicMoveTo(
       long world,
       int index,
-      float x,
-      float y,
-      float z,
+      float xMeters,
+      float yMeters,
+      float zMeters,
       float qx,
       float qy,
       float qz,

@@ -6,27 +6,27 @@
 
 namespace frcsim {
 
-Battery::Battery(const BatteryParams& params) : m_params(params), m_voltage(params.openCircuitVoltage) {
+Battery::Battery(const BatteryParams& params) : m_params(params), m_voltageVolts(params.openCircuitVolts) {
     validate(params);
 }
 
 void Battery::validate(const BatteryParams& p) {
-    const auto positive = [](float v) { return std::isfinite(v) && v > 0.0f; };
-    if (!positive(p.openCircuitVoltage) || !std::isfinite(p.internalResistance) || p.internalResistance < 0.0f) {
+    if (!std::isfinite(p.openCircuitVolts) || p.openCircuitVolts <= 0.0f || !std::isfinite(p.internalResistanceOhms) ||
+        p.internalResistanceOhms < 0.0f) {
         throw std::invalid_argument("battery voltage must be > 0 and resistance >= 0");
     }
-    if (!std::isfinite(p.brownoutVoltage) || !std::isfinite(p.brownoutRecoveryVoltage) || p.brownoutVoltage < 0.0f ||
-        p.brownoutRecoveryVoltage < p.brownoutVoltage) {
+    if (!std::isfinite(p.brownoutVolts) || !std::isfinite(p.brownoutRecoveryVolts) || p.brownoutVolts < 0.0f ||
+        p.brownoutRecoveryVolts < p.brownoutVolts) {
         throw std::invalid_argument("battery brownout voltages must satisfy 0 <= brownout <= recovery");
     }
 }
 
-void Battery::update(float totalSupplyCurrent) noexcept {
-    m_current = std::isfinite(totalSupplyCurrent) ? totalSupplyCurrent : 0.0f;
-    m_voltage = std::max(0.0f, m_params.openCircuitVoltage - m_params.internalResistance * m_current);
-    if (!m_brownout && m_voltage < m_params.brownoutVoltage) {
+void Battery::update(float totalSupplyCurrentAmps) noexcept {
+    m_currentAmps = std::isfinite(totalSupplyCurrentAmps) ? totalSupplyCurrentAmps : 0.0f;
+    m_voltageVolts = std::max(0.0f, m_params.openCircuitVolts - m_params.internalResistanceOhms * m_currentAmps);
+    if (!m_brownout && m_voltageVolts < m_params.brownoutVolts) {
         m_brownout = true;
-    } else if (m_brownout && m_voltage > m_params.brownoutRecoveryVoltage) {
+    } else if (m_brownout && m_voltageVolts > m_params.brownoutRecoveryVolts) {
         m_brownout = false;
     }
 }

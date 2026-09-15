@@ -38,11 +38,11 @@ TEST_F(PiecePoolTest, BatchSpawnAssignsIndicesAndOutputs) {
     EXPECT_EQ(indices, (std::vector<std::uint32_t>{0, 1, 2}));
     EXPECT_EQ(world.pieces().highWater(), 3u);
     EXPECT_EQ(world.pieces().countInState(PieceState::OnField), 3u);
-    EXPECT_FLOAT_EQ(world.pieces().positionsData()[3], 1.0f); // piece 1 x, before any step
+    EXPECT_FLOAT_EQ(world.pieces().positionsMetersData()[3], 1.0f); // piece 1 x, before any step
     EXPECT_EQ(world.pieces().statesData()[2], static_cast<std::uint8_t>(PieceState::OnField));
 
     test::runPeriods(world, 100);
-    EXPECT_NEAR(world.pieces().positionsData()[5], test::kFuelRadius, 0.005f) << "outputs refresh after step";
+    EXPECT_NEAR(world.pieces().positionsMetersData()[5], test::kFuelRadiusMeters, 0.005f) << "outputs refresh after step";
 }
 
 TEST_F(PiecePoolTest, SpawnIsAllOrNothingAtCapacity) {
@@ -68,7 +68,7 @@ TEST_F(PiecePoolTest, DespawnRecyclesBodyForSameType) {
     EXPECT_EQ(b, a);
     EXPECT_EQ(world.pieces().body(b), body);
     EXPECT_TRUE(world.physics().GetBodyInterface().IsAdded(body));
-    EXPECT_NEAR(world.pieces().position(b).GetX(), 3.0f, 1e-5f);
+    EXPECT_NEAR(world.pieces().positionMeters(b).GetX(), 3.0f, 1e-5f);
 }
 
 TEST_F(PiecePoolTest, DifferentTypeDoesNotReuseBody) {
@@ -78,8 +78,8 @@ TEST_F(PiecePoolTest, DifferentTypeDoesNotReuseBody) {
     PieceTypeDesc box;
     box.name = "box";
     box.shape = PieceShape::Box;
-    box.halfExtents = {0.1f, 0.1f, 0.1f};
-    box.mass = 1.0f;
+    box.halfExtentsMeters = {0.1f, 0.1f, 0.1f};
+    box.massKg = 1.0f;
     const PieceTypeId boxType = world.pieceTypes().add(box, world.materials());
     const std::uint32_t b = world.pieces().spawnOne(boxType, JPH::Vec3(0, 0, 1));
     EXPECT_NE(b, a);
@@ -104,9 +104,9 @@ TEST_F(PiecePoolTest, NonPhysicalStatesRemoveBody) {
 }
 
 TEST_F(PiecePoolTest, OutOfBoundsPiecesAreRemoved) {
-    world.field().setBounds(JPH::AABox(JPH::Vec3(-1, -1, -1), JPH::Vec3(1, 1, 5)));
+    world.field().setBoundsMeters(JPH::AABox(JPH::Vec3(-1, -1, -1), JPH::Vec3(1, 1, 5)));
     const std::uint32_t p =
-        world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, test::kFuelRadius), JPH::Vec3(5.0f, 0, 0));
+        world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, test::kFuelRadiusMeters), JPH::Vec3(5.0f, 0, 0));
     test::runPeriods(world, 50);
     EXPECT_EQ(world.pieces().state(p), PieceState::OutOfBounds);
     EXPECT_FALSE(world.physics().GetBodyInterface().IsAdded(world.pieces().body(p)));
@@ -142,10 +142,10 @@ TEST(PieceTypes, Validation) {
     World world(WorldConfig{});
     PieceTypeDesc desc;
     desc.name = "ball";
-    desc.radius = 0.1f;
-    desc.mass = 0.0f;
+    desc.radiusMeters = 0.1f;
+    desc.massKg = 0.0f;
     EXPECT_THROW(world.pieceTypes().add(desc, world.materials()), std::invalid_argument);
-    desc.mass = 1.0f;
+    desc.massKg = 1.0f;
     desc.material = 63;
     EXPECT_THROW(world.pieceTypes().add(desc, world.materials()), NotFoundError);
     desc.material = 0;
@@ -159,13 +159,13 @@ TEST(PieceTypes, CylinderPieceRestsOnFlatFace) {
     PieceTypeDesc desc;
     desc.name = "puck";
     desc.shape = PieceShape::Cylinder;
-    desc.radius = 0.15f;
-    desc.halfHeight = 0.025f;
-    desc.mass = 0.3f;
+    desc.radiusMeters = 0.15f;
+    desc.halfHeightMeters = 0.025f;
+    desc.massKg = 0.3f;
     const PieceTypeId puck = world.pieceTypes().add(desc, world.materials());
     const std::uint32_t p = world.pieces().spawnOne(puck, JPH::Vec3(0, 0, 0.3f));
     test::runPeriods(world, 100);
-    EXPECT_NEAR(world.pieces().position(p).GetZ(), 0.025f, 0.005f);
+    EXPECT_NEAR(world.pieces().positionMeters(p).GetZ(), 0.025f, 0.005f);
 }
 
 } // namespace

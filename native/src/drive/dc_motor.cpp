@@ -8,18 +8,18 @@
 namespace frcsim {
 namespace {
 
-constexpr float kRpmToRadPerSec = 2.0f * 3.14159265358979f / 60.0f;
+constexpr float kRadPerSecPerRpm = 2.0f * 3.14159265358979f / 60.0f;
 
-DcMotorParams preset(float stallTorque, float stallCurrent, float freeCurrent, float freeSpeedRpm, int count,
-                     float rotorInertia) {
+DcMotorParams preset(float stallTorqueNewtonMeters, float stallCurrentAmps, float freeCurrentAmps, float freeSpeedRpm,
+                     int count, float rotorInertiaKgMetersSq) {
     DcMotorParams p;
-    p.nominalVoltage = 12.0f;
-    p.stallTorque = stallTorque;
-    p.stallCurrent = stallCurrent;
-    p.freeCurrent = freeCurrent;
-    p.freeSpeed = freeSpeedRpm * kRpmToRadPerSec;
+    p.nominalVoltageVolts = 12.0f;
+    p.stallTorqueNewtonMeters = stallTorqueNewtonMeters;
+    p.stallCurrentAmps = stallCurrentAmps;
+    p.freeCurrentAmps = freeCurrentAmps;
+    p.freeSpeedRadPerSec = freeSpeedRpm * kRadPerSecPerRpm;
     p.count = count;
-    p.rotorInertia = rotorInertia;
+    p.rotorInertiaKgMetersSq = rotorInertiaKgMetersSq;
     return p;
 }
 
@@ -48,91 +48,98 @@ DcMotorParams DcMotorParams::falcon500(int count) {
 DcMotorParams DcMotorParams::falcon500Foc(int count) {
     return preset(5.84f, 304.0f, 1.5f, 6080.0f, count, 5.5e-5f);
 }
-DcMotorParams DcMotorParams::neo(int count) {
-    return preset(2.6f, 105.0f, 1.8f, 5676.0f, count, 4.0e-5f);
-}
-DcMotorParams DcMotorParams::neoVortex(int count) {
-    return preset(3.60f, 211.0f, 3.6f, 6784.0f, count, 5.0e-5f);
+DcMotorParams DcMotorParams::minion(int count) {
+    return preset(3.17f, 211.0f, 2.0f, 7704.0f, count, 3.5e-5f);
 }
 
 DcMotorConstants deriveMotorConstants(const DcMotorParams& p) {
-    if (!positiveFinite(p.nominalVoltage) || !positiveFinite(p.stallTorque) || !positiveFinite(p.stallCurrent) ||
-        !positiveFinite(p.freeSpeed) || !std::isfinite(p.freeCurrent) || p.freeCurrent < 0.0f) {
+    if (!positiveFinite(p.nominalVoltageVolts) || !positiveFinite(p.stallTorqueNewtonMeters) ||
+        !positiveFinite(p.stallCurrentAmps) || !positiveFinite(p.freeSpeedRadPerSec) ||
+        !std::isfinite(p.freeCurrentAmps) || p.freeCurrentAmps < 0.0f) {
         throw std::invalid_argument("motor parameters must be finite and positive");
     }
     if (p.count < 1) {
         throw std::invalid_argument("motor count must be >= 1");
     }
-    if (!std::isfinite(p.rotorInertia) || p.rotorInertia < 0.0f) {
+    if (!std::isfinite(p.rotorInertiaKgMetersSq) || p.rotorInertiaKgMetersSq < 0.0f) {
         throw std::invalid_argument("motor rotor inertia must be finite and >= 0");
     }
     const auto n = static_cast<float>(p.count);
-    const float stallCurrent = p.stallCurrent * n;
-    const float freeCurrent = p.freeCurrent * n;
+    const float stallCurrentAmps = p.stallCurrentAmps * n;
+    const float freeCurrentAmps = p.freeCurrentAmps * n;
     DcMotorConstants c;
-    c.resistance = p.nominalVoltage / stallCurrent;
-    const float backEmfAtFree = p.nominalVoltage - c.resistance * freeCurrent;
-    if (!(backEmfAtFree > 0.0f)) {
+    c.resistanceOhms = p.nominalVoltageVolts / stallCurrentAmps;
+    const float backEmfAtFreeSpeedVolts = p.nominalVoltageVolts - c.resistanceOhms * freeCurrentAmps;
+    if (!(backEmfAtFreeSpeedVolts > 0.0f)) {
         throw std::invalid_argument("motor free current is inconsistent with stall current");
     }
-    c.kv = p.freeSpeed / backEmfAtFree;
-    c.kt = (p.stallTorque * n) / stallCurrent;
-    c.rotorInertia = p.rotorInertia * n;
+    c.kvRadPerSecPerVolt = p.freeSpeedRadPerSec / backEmfAtFreeSpeedVolts;
+    c.ktNewtonMetersPerAmp = (p.stallTorqueNewtonMeters * n) / stallCurrentAmps;
+    c.rotorInertiaKgMetersSq = p.rotorInertiaKgMetersSq * n;
     return c;
 }
 
-MotorStepResult stepGearedMotor(const DcMotorConstants& motor, const GearboxParams& gearbox, float inertia,
-                                float velocity, float commandVoltage, float busVoltage, NeutralMode neutralMode,
-                                const CurrentLimits& limits, float externalTorque, float dt) {
-    const float g = gearbox.ratio;
-    const float eta = gearbox.efficiency;
+MotorStepResult stepGearedMotor(const DcMotorConstants& motor, const GearboxParams& gearbox, float inertiaKgMetersSq,
+                                float velocityRadPerSec, float commandVolts, float busVolts, NeutralMode neutralMode,
+                                const CurrentLimits& limits, float externalTorqueNewtonMeters, float dtSeconds) {
+    const float ratio = gearbox.ratio;
+    const float efficiency = gearbox.efficiency;
     MotorStepResult result;
-    float omega;
+    float omegaRadPerSec;
 
-    const bool windingsOpen = (neutralMode == NeutralMode::Coast && commandVoltage == 0.0f) || busVoltage <= 0.0f;
+    const bool windingsOpen = (neutralMode == NeutralMode::Coast && commandVolts == 0.0f) || busVolts <= 0.0f;
     if (windingsOpen) {
-        omega = velocity + dt * externalTorque / inertia;
+        omegaRadPerSec = velocityRadPerSec + dtSeconds * externalTorqueNewtonMeters / inertiaKgMetersSq;
     } else {
-        const float voltage = std::clamp(commandVoltage, -busVoltage, busVoltage);
-        // Mechanism torque = A - B * omega; solve implicitly because B (back-EMF) is stiff.
-        const float a = eta * g * motor.kt * voltage / motor.resistance;
-        const float b = eta * g * g * motor.kt / (motor.kv * motor.resistance);
-        omega = (inertia * velocity + dt * (a + externalTorque)) / (inertia + dt * b);
-        float current = (voltage - g * omega / motor.kv) / motor.resistance;
+        const float volts = std::clamp(commandVolts, -busVolts, busVolts);
+        // Mechanism torque = drive - damping * omega; solved implicitly because back-EMF damping is stiff.
+        const float driveTorqueNewtonMeters = efficiency * ratio * motor.ktNewtonMetersPerAmp * volts / motor.resistanceOhms;
+        const float dampingNewtonMeterSecPerRad =
+            efficiency * ratio * ratio * motor.ktNewtonMetersPerAmp / (motor.kvRadPerSecPerVolt * motor.resistanceOhms);
+        omegaRadPerSec =
+            (inertiaKgMetersSq * velocityRadPerSec + dtSeconds * (driveTorqueNewtonMeters + externalTorqueNewtonMeters)) /
+            (inertiaKgMetersSq + dtSeconds * dampingNewtonMeterSecPerRad);
+        float currentAmps = (volts - ratio * omegaRadPerSec / motor.kvRadPerSecPerVolt) / motor.resistanceOhms;
 
-        float currentLimit = limits.stator > 0.0f ? limits.stator : std::numeric_limits<float>::infinity();
-        float appliedVoltage = voltage;
-        if (std::abs(current) > currentLimit || limits.supply > 0.0f) {
+        float currentLimitAmps = limits.statorAmps > 0.0f ? limits.statorAmps : std::numeric_limits<float>::infinity();
+        float appliedVolts = volts;
+        if (std::abs(currentAmps) > currentLimitAmps || limits.supplyAmps > 0.0f) {
             // A current-limited controller lowers its duty cycle: the voltage it actually applies is
-            // I*R + back-EMF. Supply current follows that effective voltage, not the command.
-            const float backEmf = g * velocity / motor.kv;
-            if (limits.supply > 0.0f) {
+            // I*R + back-EMF, and supply current follows that effective voltage (decision D28).
+            const float backEmfVolts = ratio * velocityRadPerSec / motor.kvRadPerSecPerVolt;
+            if (limits.supplyAmps > 0.0f) {
                 // |I * (I*R + backEmf) / Vbus| <= supplyLimit, solved for the largest |I| with the current's sign.
-                const float s = current >= 0.0f ? 1.0f : -1.0f;
-                const float emf = s * backEmf; // back-EMF component along the current's direction
-                const float disc = emf * emf + 4.0f * motor.resistance * limits.supply * busVoltage;
-                const float supplyCap = (-emf + std::sqrt(std::max(0.0f, disc))) / (2.0f * motor.resistance);
-                currentLimit = std::min(currentLimit, std::max(0.0f, supplyCap));
+                const float sign = currentAmps >= 0.0f ? 1.0f : -1.0f;
+                const float emfAlongCurrentVolts = sign * backEmfVolts;
+                const float discriminant = emfAlongCurrentVolts * emfAlongCurrentVolts +
+                                           4.0f * motor.resistanceOhms * limits.supplyAmps * busVolts;
+                const float supplyCapAmps = (-emfAlongCurrentVolts + std::sqrt(std::max(0.0f, discriminant))) /
+                                            (2.0f * motor.resistanceOhms);
+                currentLimitAmps = std::min(currentLimitAmps, std::max(0.0f, supplyCapAmps));
             }
-            if (std::abs(current) > currentLimit) {
-                current = std::copysign(currentLimit, current);
-                omega = velocity + dt * (eta * g * motor.kt * current + externalTorque) / inertia;
-                appliedVoltage = std::clamp(current * motor.resistance + g * omega / motor.kv, -busVoltage, busVoltage);
+            if (std::abs(currentAmps) > currentLimitAmps) {
+                currentAmps = std::copysign(currentLimitAmps, currentAmps);
+                omegaRadPerSec = velocityRadPerSec +
+                                 dtSeconds * (efficiency * ratio * motor.ktNewtonMetersPerAmp * currentAmps +
+                                              externalTorqueNewtonMeters) /
+                                     inertiaKgMetersSq;
+                appliedVolts = std::clamp(currentAmps * motor.resistanceOhms + ratio * omegaRadPerSec / motor.kvRadPerSecPerVolt,
+                                          -busVolts, busVolts);
             }
         }
-        result.appliedVoltage = appliedVoltage;
-        result.statorCurrent = current;
-        result.supplyCurrent = current * appliedVoltage / busVoltage;
+        result.appliedVolts = appliedVolts;
+        result.statorCurrentAmps = currentAmps;
+        result.supplyCurrentAmps = currentAmps * appliedVolts / busVolts;
     }
 
     // Coulomb friction that can stop the mechanism but never reverse it.
-    const float frictionDelta = gearbox.frictionTorque * dt / inertia;
-    if (std::abs(omega) <= frictionDelta) {
-        omega = 0.0f;
+    const float frictionDeltaRadPerSec = gearbox.frictionTorqueNewtonMeters * dtSeconds / inertiaKgMetersSq;
+    if (std::abs(omegaRadPerSec) <= frictionDeltaRadPerSec) {
+        omegaRadPerSec = 0.0f;
     } else {
-        omega -= std::copysign(frictionDelta, omega);
+        omegaRadPerSec -= std::copysign(frictionDeltaRadPerSec, omegaRadPerSec);
     }
-    result.velocity = omega;
+    result.velocityRadPerSec = omegaRadPerSec;
     return result;
 }
 

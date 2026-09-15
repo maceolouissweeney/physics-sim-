@@ -17,33 +17,33 @@ namespace frcsim {
 /// Live state of one module: inputs set by the user, everything else written by the controller each substep.
 struct SwerveModuleState {
     // Inputs
-    float driveVoltageCommand = 0.0f;
-    float steerVoltageCommand = 0.0f;
+    float driveCommandVolts = 0.0f;
+    float steerCommandVolts = 0.0f;
 
     // Drive
-    float wheelVelocity = 0.0f; ///< rad/s
-    double wheelAngle = 0.0;    ///< rad, accumulated (drive encoder = wheelAngle * gear ratio)
-    float driveAppliedVoltage = 0.0f;
-    float driveStatorCurrent = 0.0f;
-    float driveSupplyCurrent = 0.0f;
+    float wheelVelocityRadPerSec = 0.0f;
+    double wheelAngleRadians = 0.0; ///< accumulated wheel rotation (true, without coupling or quantization)
+    float driveAppliedVolts = 0.0f;
+    float driveStatorCurrentAmps = 0.0f;
+    float driveSupplyCurrentAmps = 0.0f;
 
     // Steer
-    double steerAngle = 0.0;    ///< rad, continuous module angle (CCW positive, 0 = robot +X)
-    float steerVelocity = 0.0f; ///< rad/s at the module
-    float steerAppliedVoltage = 0.0f;
-    float steerStatorCurrent = 0.0f;
-    float steerSupplyCurrent = 0.0f;
+    double steerAngleRadians = 0.0; ///< continuous module angle (CCW positive, 0 = robot +X)
+    float steerVelocityRadPerSec = 0.0f;
+    float steerAppliedVolts = 0.0f;
+    float steerStatorCurrentAmps = 0.0f;
+    float steerSupplyCurrentAmps = 0.0f;
 
     // Contact
     bool hasContact = false;
-    float normalForce = 0.0f;       ///< N
-    float slipSpeed = 0.0f;         ///< m/s at the contact patch (magnitude)
-    float longitudinalSlip = 0.0f;  ///< m/s, wheel surface speed minus ground speed along the wheel (+ = spinning)
-    float lateralSlip = 0.0f;       ///< m/s, sideways sliding speed of the contact patch
-    float contactX = 0.0f;          ///< contact point, field frame (m)
-    float contactY = 0.0f;
-    float contactZ = 0.0f;
-    float groundFriction = 1.0f;    ///< friction factor of the contact surface material
+    float normalForceNewtons = 0.0f;
+    float slipSpeedMetersPerSec = 0.0f;         ///< contact patch slip (magnitude)
+    float longitudinalSlipMetersPerSec = 0.0f;  ///< wheel surface speed minus ground speed along the wheel
+    float lateralSlipMetersPerSec = 0.0f;       ///< sideways sliding speed of the contact patch
+    float contactXMeters = 0.0f;                ///< contact point, field frame
+    float contactYMeters = 0.0f;
+    float contactZMeters = 0.0f;
+    float groundFriction = 1.0f;                ///< friction factor of the contact surface material
 };
 
 /// All mutable drivetrain state; owned by SwerveRobot, shared with the controller.
@@ -90,9 +90,9 @@ public:
 protected:
     JPH::Wheel* ConstructWheel(const JPH::WheelSettings& settings) const override;
     bool AllowSleep() const override { return false; }
-    void PreCollide(float dt, JPH::PhysicsSystem& physics) override;
-    void PostCollide(float dt, JPH::PhysicsSystem& physics) override;
-    bool SolveLongitudinalAndLateralConstraints(float dt) override;
+    void PreCollide(float dtSeconds, JPH::PhysicsSystem& physics) override;
+    void PostCollide(float dtSeconds, JPH::PhysicsSystem& physics) override;
+    bool SolveLongitudinalAndLateralConstraints(float dtSeconds) override;
     void SaveState(JPH::StateRecorder&) const override {}
     void RestoreState(JPH::StateRecorder&) override {}
 #ifdef JPH_DEBUG_RENDERER
@@ -100,12 +100,12 @@ protected:
 #endif
 
 private:
-    [[nodiscard]] float driveInertia(std::size_t module) const;
+    [[nodiscard]] float driveInertiaKgMetersSq(std::size_t module) const;
 
     const SwerveDriveConfig& m_config;
     SwerveDrivetrainState& m_state;
     const MaterialTable& m_materials;
-    float m_previousDt = 0.0f;
+    float m_previousDtSeconds = 0.0f;
 };
 
 } // namespace frcsim

@@ -67,7 +67,7 @@ TEST(MaterialTable, RejectsInvalidValuesAndOverflow) {
 
 /// Drops a ball onto the ground and returns the height of the first bounce apex (ball bottom above ground).
 float firstBounceApex(World& world, PieceTypeId fuel, float dropHeight) {
-    const std::uint32_t piece = world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, dropHeight + test::kFuelRadius));
+    const std::uint32_t piece = world.pieces().spawnOne(fuel, JPH::Vec3(0, 0, dropHeight + test::kFuelRadiusMeters));
     const JPH::BodyID body = world.pieces().body(piece);
     JPH::BodyInterface& bodies = world.physics().GetBodyInterface();
 
@@ -76,7 +76,7 @@ float firstBounceApex(World& world, PieceTypeId fuel, float dropHeight) {
     for (int i = 0; i < 3000; ++i) { // up to 6 s at 2 ms
         world.step(0.002, 1);
         const float vz = bodies.GetLinearVelocity(body).GetZ();
-        const float bottom = static_cast<float>(bodies.GetPosition(body).GetZ()) - test::kFuelRadius;
+        const float bottom = static_cast<float>(bodies.GetPosition(body).GetZ()) - test::kFuelRadiusMeters;
         if (!rising && vz > 0.05f) {
             rising = true;
         }

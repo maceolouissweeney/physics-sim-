@@ -18,17 +18,17 @@
 namespace frcsim {
 
 struct RobotPose {
-    JPH::Vec3 position;        ///< robot frame origin (on the carpet under the frame center)
+    JPH::Vec3 positionMeters;               ///< robot frame origin (on the carpet under the frame center)
     JPH::Quat rotation;
-    JPH::Vec3 linearVelocity;  ///< of the center of mass, field frame
-    JPH::Vec3 angularVelocity; ///< field frame
+    JPH::Vec3 linearVelocityMetersPerSec;   ///< of the center of mass, field frame
+    JPH::Vec3 angularVelocityRadPerSec;     ///< field frame
 };
 
 /// A swerve robot: chassis body + Jolt vehicle constraint + SwerveVehicleController (ADR-0003).
 class SwerveRobot {
 public:
     SwerveRobot(JPH::PhysicsSystem& physics, const MaterialTable& materials, const SwerveDriveConfig& config,
-                std::uint32_t index, float x, float y, float yaw);
+                std::uint32_t index, float xMeters, float yMeters, float yawRadians);
     ~SwerveRobot();
 
     SwerveRobot(const SwerveRobot&) = delete;
@@ -44,20 +44,24 @@ public:
     [[nodiscard]] JPH::BodyID body() const { return m_body; }
 
     [[nodiscard]] RobotPose pose() const;
-    /// True unwrapped yaw (rad) since creation or the last resetPose(); updated by postStep().
-    [[nodiscard]] double continuousYaw() const { return m_continuousYaw; }
+    /// True unwrapped yaw since creation or the last resetPose(); updated by postStep().
+    [[nodiscard]] double continuousYawRadians() const { return m_continuousYawRadians; }
 
-    /// Gyro reading: true yaw with scale error, drift, and noise (SensorParams). Equals continuousYaw() when ideal.
-    [[nodiscard]] double measuredGyroYaw() const { return m_gyroYaw; }
+    /// Gyro reading: true yaw with scale error, drift, and noise (SensorParams). Equals the true yaw when ideal.
+    [[nodiscard]] double measuredGyroYawRadians() const { return m_gyroYawRadians; }
 
-    /// Drive encoder reading (rotor rad), quantized to SensorParams::driveEncoderCountsPerRev.
-    [[nodiscard]] double measuredDriveRotorPosition(std::size_t module) const;
+    /// Drive encoder reading: wheel rotation * gear ratio + module rotation * coupling ratio, quantized to
+    /// SensorParams::driveEncoderCountsPerRev.
+    [[nodiscard]] double measuredDriveRotorPositionRadians(std::size_t module) const;
 
-    /// Places the robot on the carpet at (x, y) facing yaw, at rest. Also re-zeros the gyro (reads yaw, drift restarts).
-    void resetPose(float x, float y, float yaw);
+    /// Drive rotor velocity including the steering coupling term.
+    [[nodiscard]] double driveRotorVelocityRadPerSec(std::size_t module) const;
 
-    /// Once per World::step after all substeps; dt is the step duration.
-    void postStep(double dt);
+    /// Places the robot on the carpet at rest and re-zeros the gyro to yawRadians (drift restarts).
+    void resetPose(float xMeters, float yMeters, float yawRadians);
+
+    /// Once per World::step after all substeps.
+    void postStep(double dtSeconds);
 
 private:
     JPH::PhysicsSystem& m_physics;
@@ -66,15 +70,15 @@ private:
     JPH::BodyID m_body;
     JPH::Ref<JPH::VehicleCollisionTester> m_tester;
     JPH::Ref<JPH::VehicleConstraint> m_constraint;
-    double m_continuousYaw = 0.0;
-    float m_lastYaw = 0.0f;
+    double m_continuousYawRadians = 0.0;
+    float m_lastYawRadians = 0.0f;
 
     // Gyro model
     std::mt19937 m_rng;
-    std::normal_distribution<double> m_normal{0.0, 1.0};
-    double m_gyroOrigin = 0.0;    ///< true yaw at the last gyro reset
-    double m_gyroElapsed = 0.0;   ///< seconds since the last gyro reset (drift)
-    double m_gyroYaw = 0.0;
+    std::normal_distribution<double> m_standardNormal{0.0, 1.0};
+    double m_gyroOriginRadians = 0.0;  ///< true yaw at the last gyro reset
+    double m_gyroElapsedSeconds = 0.0; ///< time since the last gyro reset (drift)
+    double m_gyroYawRadians = 0.0;
 };
 
 /// All robots in a world.
@@ -82,12 +86,12 @@ class Robots {
 public:
     Robots(JPH::PhysicsSystem& physics, const MaterialTable& materials);
 
-    std::uint32_t addSwerve(const SwerveDriveConfig& config, float x, float y, float yaw);
+    std::uint32_t addSwerve(const SwerveDriveConfig& config, float xMeters, float yMeters, float yawRadians);
     [[nodiscard]] SwerveRobot& swerve(std::uint32_t index);
     [[nodiscard]] const SwerveRobot& swerve(std::uint32_t index) const;
     [[nodiscard]] std::size_t size() const { return m_swerve.size(); }
 
-    void postStep(double dt);
+    void postStep(double dtSeconds);
 
 private:
     JPH::PhysicsSystem& m_physics;

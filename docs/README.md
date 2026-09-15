@@ -23,4 +23,4 @@ Smaller decisions are recorded in the decision log in [IMPLEMENTATION_PLAN.md §
 ## Planned documents
 - `models/`: projectiles and mechanisms (Phase 4). The swerve model is done:
   [models/swerve.md](models/swerve.md)
-- `guides/`: quickstart, CTRE/REV integration, authoring a field
+- `guides/`: quickstart, CTRE Phoenix 6 integration, authoring a field
